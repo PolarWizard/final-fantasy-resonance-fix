@@ -1,0 +1,35 @@
+# cargo-about: which licenses may appear in the shipped binary's dependencies.
+#
+# The intent is "anything but GPL and its derivatives". cargo-about `accepted`
+# is the priority order it uses to pick which text to bundle for a crate
+# offering "MIT OR Apache-2.0", so it has to be an ordered allowlist. The rule
+# is therefore expressed by listing every non-copyleft license instead, which
+# comes to the same thing in practice.
+#
+# Absent, deliberately: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.1, LGPL-3.0 and
+# their variants. Those make the combined work copyleft, so the ASI could no
+# longer be distributed under this project's MIT license. That is a licensing
+# decision rather than a build detail, so it arrives as a build failure.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Unicode-3.0",
+
+    # Permissive, attribution-only. Shipping LICENSES beside the ASI satisfies
+    # all of them in full.
+    "0BSD",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSD-3-Clause-Clear",
+    "BSL-1.0",
+    "CC0-1.0",
+    "ISC",
+    "MIT-0",
+    "NCSA",
+    "OpenSSL",
+    "PostgreSQL",
+    "Unicode-DFS-2016",
+    "Unlicense",
+    "Zlib",
+]

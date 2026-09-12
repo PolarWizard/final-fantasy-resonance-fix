@@ -1,0 +1,43 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "cargo",
+            "args": ["build", "--release"],
+            "group": "build",
+            "problemMatcher": ["$rustc"]
+        },
+        {
+            "label": "install",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}\\scripts\\install.py",
+                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\FINAL FANTASY RESONANCE DEMO\\FFRS\\Binaries\\Win64"
+            ],
+            "group": "build",
+            "problemMatcher": ["$rustc"]
+        },
+        {
+            "label": "build and install",
+            "dependsOn": ["install"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "loader",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}\\scripts\\loader.py",
+                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\FINAL FANTASY RESONANCE DEMO\\FFRS\\Binaries\\Win64"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        }
+    ]
+}

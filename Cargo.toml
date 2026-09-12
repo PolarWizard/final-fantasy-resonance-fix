@@ -1,0 +1,28 @@
+﻿[package]
+name = "final-fantasy-resonance"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+# The shipped artifact is final_fantasy_resonance_fix.asi, which scripts/install.py
+# and the README both name. Setting it here rather than renaming the package keeps
+# the cxx include path (final-fantasy-resonance/src/bridge.rs.h) unchanged.
+name = "final_fantasy_resonance_fix"
+crate-type = ["cdylib"]
+
+[dependencies]
+grapnel = "=0.1.2"
+cxx = "1.0.201"
+serde = { version = "1", features = ["derive"] }
+toml = "1.1.6"
+windows = { version = "0.62", features = [
+    "Win32_System_SystemInformation", "Win32_System_Memory", "Win32_System_ProcessStatus",
+    "Win32_Foundation", "Win32_System_LibraryLoader",
+    "Win32_System_SystemServices", "Win32_System_Threading",
+] }
+log = "0.4.34"
+fern = "0.7.1"
+
+[build-dependencies]
+cxx-build = "1.0.201"
