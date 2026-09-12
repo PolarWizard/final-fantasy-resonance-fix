@@ -19,9 +19,13 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-env-changed=FFRS_SDK");
-    let sdk = PathBuf::from(
-        env::var("FFRS_SDK").unwrap_or_else(|_| r"C:\Dumper-7\5.6.1-0+UE5-FFRS\CppSDK".into()),
-    );
+    let sdk = env::var_os("FFRS_SDK")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("Cargo manifest directory missing"))
+                .join("5.6.1-0+UE5-FFRS")
+                .join("CppSDK")
+        });
     assert!(
         sdk.join("SDK/Basic.hpp").is_file(),
         "Set FFRS_SDK to the dumped CppSDK directory"
