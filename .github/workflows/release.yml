@@ -39,7 +39,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path package/scripts | Out-Null
 
           # Copy over files from the build and the repo
-          Copy-Item target/release/final.dll package/scripts/final_fantasy_resonance_fix.asi
+          Copy-Item target/release/final_fantasy_resonance_fix.dll package/scripts/final_fantasy_resonance_fix.asi
           Copy-Item final_fantasy_resonance_fix.toml package/scripts/
           Copy-Item README.txt package/
           Copy-Item LICENSES package/
