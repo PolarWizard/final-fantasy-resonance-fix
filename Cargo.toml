@@ -5,9 +5,6 @@ edition = "2024"
 license = "MIT"
 
 [lib]
-# The shipped artifact is final_fantasy_resonance_fix.asi, which scripts/install.py
-# and the README both name. Setting it here rather than renaming the package keeps
-# the cxx include path (final-fantasy-resonance/src/bridge.rs.h) unchanged.
 name = "final_fantasy_resonance_fix"
 crate-type = ["cdylib"]
 

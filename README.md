@@ -26,12 +26,12 @@ python scripts/loader.py "<path to 'FINAL FANTASY RESONANCE\FFRS\Binaries\Win64'
 ```ps1
 python scripts/install.py "<path to 'FINAL FANTASY RESONANCE\FFRS\Binaries\Win64' folder>"
 ```
-This builds a release DLL with `cargo` and copies it to `<game folder>/scripts/final-fantasy-resonance-fix.asi`, along with a default config on first install. Pass `--debug` to build and install a debug build instead.
+This builds a release DLL with `cargo` and copies it to `<game folder>/scripts/final_fantasy_resonance_fix.asi`, along with a default config on first install. Pass `--debug` to build and install a debug build instead.
 
 If you're using VS Code, the same steps are wired up as tasks in `.vscode/tasks.json` (`loader`, `install`, `build and install`) -- edit the game folder path in there to match your install first.
 
 ## Configuration
-- Edit `<game folder>/scripts/final-fantasy-resonance-fix.toml`
+- Edit `<game folder>/scripts/final_fantasy_resonance_fix.toml`
 
 ## Screenshots
 | ![Demo1](images/final-fantasy-resonance-fix-1.gif) |
