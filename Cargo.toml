@@ -14,9 +14,13 @@ cxx = "1.0.201"
 serde = { version = "1", features = ["derive"] }
 toml = "1.1.6"
 windows = { version = "0.62", features = [
-    "Win32_System_SystemInformation", "Win32_System_Memory", "Win32_System_ProcessStatus",
-    "Win32_Foundation", "Win32_System_LibraryLoader",
-    "Win32_System_SystemServices", "Win32_System_Threading",
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
 ] }
 log = "0.4.34"
 fern = "0.7.1"
