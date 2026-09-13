@@ -101,6 +101,7 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
             }
             if hud {
                 hud::expand_menu_backdrop(widget);
+                log_report(unsafe { ffi::hide_battle_shadow(widget) });
                 if visibility_ready {
                     log_report(unsafe { ffi::update_map_backdrop(widget, -1) });
                 }

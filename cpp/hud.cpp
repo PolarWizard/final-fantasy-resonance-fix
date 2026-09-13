@@ -158,6 +158,37 @@ UWidget* embedded_menu_backdrop(UWidget* widget) {
     return nullptr;
 }
 
+/// @brief The image the battle layout draws its corner shadow with.
+///
+/// Searched by the name it carries and confirmed by the texture it draws, since
+/// a name alone only suggests one. Depth-bounded, and confined to the tree it
+/// is given, which is the layout's own: the image belongs to that tree rather
+/// than to any component nested in it.
+///
+/// @return The shadow image, or nullptr if this branch does not hold it.
+UImage* battle_shadow(UWidget* node, int depth = 0) {
+    static const auto shadow_name = UKismetStringLibrary::Conv_StringToName(L"RU_BG");
+    if (!live(node) || depth > 16) {
+        return nullptr;
+    }
+    if (node->Name == shadow_name && node->IsA(UImage::StaticClass())) {
+        auto texture = static_cast<UImage*>(node)->Brush.ResourceObject;
+        return live(texture) && texture->GetName() == "T_Btl_layout_shadow"
+                   ? static_cast<UImage*>(node)
+                   : nullptr;
+    }
+    if (!node->IsA(UPanelWidget::StaticClass())) {
+        return nullptr;
+    }
+    auto panel = static_cast<UPanelWidget*>(node);
+    for (int i = 0, n = panel->GetChildrenCount(); i < n; ++i) {
+        if (auto found = battle_shadow(panel->GetChildAt(i), depth + 1)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
 /// @brief Takes the constrained root's inset back out of a tooltip's position.
@@ -260,6 +291,38 @@ rust::String expand_menu_backdrop(std::size_t address) {
     // widget itself cannot yet report.
     const auto name = widget->GetFullName();
     return expand_backdrop(widget, "menu_backdrop:" + name, "Menu backdrop: " + name);
+}
+
+/// @brief Stops the battle layout drawing a shadow inside the screen.
+///
+/// WBP_BattleLayout_C paints an image across itself that draws
+/// T_Btl_layout_shadow, a darkening that fades out towards the layout's
+/// corners. Those corners are the screen's on a 16:9 display, where the fade
+/// reads as vignetting; held inside 16:9 on a wider one they sit in open
+/// screen, and the fade becomes a shadow with a visible edge. Hiding the image
+/// keeps it and its layout space and stops it drawing.
+///
+/// Applied when the layout is rebuilt, which is the moment its tree is
+/// populated and Slate has not yet consumed it, and once is enough: a battle
+/// run with this reported one change and no second, so nothing shows the image
+/// again for the rest of the battle.
+///
+/// @param address The widget being rebuilt, from RBX.
+/// @return A log line when the shadow was hidden.
+rust::String hide_battle_shadow(std::size_t address) {
+    auto layout = reinterpret_cast<UUserWidget*>(address);
+    static const auto battle_layout =
+        UKismetStringLibrary::Conv_StringToName(L"WBP_BattleLayout_C");
+    if (!live(layout) || layout->Class->Name != battle_layout || !live(layout->WidgetTree)) {
+        return {};
+    }
+    auto shadow = battle_shadow(layout->WidgetTree->RootWidget);
+    if (!shadow || shadow->Visibility == ESlateVisibility::Hidden) {
+        return {};
+    }
+    shadow->SetVisibility(ESlateVisibility::Hidden);
+    return hud_report("battle_shadow", std::format("Battle shadow: hid {} in {}",
+                                                   shadow->GetName(), layout->GetName()));
 }
 
 /// @brief Holds a viewport root inside a centered rectangle of @p aspect.
