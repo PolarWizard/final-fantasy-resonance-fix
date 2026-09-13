@@ -103,6 +103,54 @@ std::string expand_backdrop(UWidget* widget, const std::string& key, const std::
     return hud_report(key, label + ": " + describe(box, scale));
 }
 
+namespace {
+/// Object indices of every backdrop spawned below. An index a collected object
+/// left behind can be reused, which at worst leaves one authored background
+/// unstretched -- the safe direction for a widget this mod may not own.
+std::unordered_set<int> spawned_backdrops;
+} // namespace
+
+UImage* spawn_backdrop_image(UWidgetTree* tree) {
+    auto black = static_cast<UImage*>(UGameplayStatics::SpawnObject(UImage::StaticClass(), tree));
+    if (!black) {
+        return nullptr;
+    }
+    auto brush = black->Brush;
+    brush.DrawAs = ESlateBrushDrawType::Image;
+    black->SetBrush(brush);
+    black->SetColorAndOpacity(FLinearColor{0, 0, 0, 1});
+    black->SetVisibility(ESlateVisibility::HitTestInvisible);
+    spawned_backdrops.insert(black->Index);
+    return black;
+}
+
+bool is_mod_backdrop(const UWidget* widget) {
+    return widget && spawned_backdrops.contains(widget->Index);
+}
+
+bool fill_overlay(UOverlay* overlay, UWidget* child) {
+    auto slot = overlay->AddChildToOverlay(child);
+    if (!slot) {
+        return false;
+    }
+    slot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
+    slot->SetVerticalAlignment(EVerticalAlignment::VAlign_Fill);
+    return true;
+}
+
+ESlateVisibility mirrored_visibility(ESlateVisibility value) {
+    return value == ESlateVisibility::Visible ? ESlateVisibility::SelfHitTestInvisible : value;
+}
+
+UImage* live_backdrop(const BackdropWrapper& wrapper) {
+    auto object = wrapper.black >= 0 && wrapper.black < UObject::GObjects->Num()
+                      ? UObject::GObjects->GetByIndex(wrapper.black)
+                      : nullptr;
+    return live(object) && object->GetFullName() == wrapper.black_name
+               ? static_cast<UImage*>(object)
+               : nullptr;
+}
+
 std::string describe(const LayoutBox& box, const Scale& scale) {
     return std::format("box={:g}x{:g} ({}), screen={:g}x{:g}, scale={:g},{:g}", box.size.X,
                        box.size.Y, box.source, box.screen.X, box.screen.Y, scale.x, scale.y);

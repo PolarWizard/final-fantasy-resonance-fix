@@ -34,7 +34,9 @@ pub mod ffi {
         unsafe fn constrain_hud_slot(widget: usize, slot: usize, path: u32, aspect: f64) -> String;
         unsafe fn correct_tooltip_position(widget: usize, aspect: f64) -> String;
         unsafe fn expand_menu_backdrop(widget: usize) -> String;
+        unsafe fn update_map_backdrop(widget: usize, visibility: i32) -> String;
         unsafe fn wrap_movie_root(widget: usize) -> String;
+        unsafe fn on_battle_sequence_event(parameter: usize) -> String;
         unsafe fn sync_movie_backdrop(widget: usize, visibility: u8);
         unsafe fn on_movie_transform(widget: usize) -> String;
         unsafe fn on_native_movie(object: usize, is_screen: bool) -> String;

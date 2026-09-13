@@ -42,6 +42,21 @@ pub(super) fn install(module: &ModuleInfo) {
         }
         log_report(unsafe { ffi::on_native_movie(ctx.rbx as usize, true) });
     });
+    // A battle sequence dispatches its authored events through one native
+    // function, tagged by the EventType byte at the head of the parameter
+    // struct. The signature is that dispatch reading the tag and bounding it
+    // against the last event type, which is unique image-wide with no
+    // wildcards: MOVZX EAX,byte ptr [R8]; DEC EAX; CMP EAX,0x7A. Hooking the
+    // read rather than the function entry keeps the anchor adjacent to the
+    // field that is read, and R8 still holds the struct there.
+    let sequence = SignatureHook {
+        tag: "Battle sequence event",
+        signature: "41 0F B6 00 FF C8 83 F8 7A 0F 87 ?? ?? ?? ??",
+        offset: 0,
+    };
+    inject_hook(module, &sequence, |ctx| {
+        log_report(unsafe { ffi::on_battle_sequence_event(ctx.r8 as usize) });
+    });
 }
 
 /// Letterboxes a summon's movie image, from the shared render-transform hook

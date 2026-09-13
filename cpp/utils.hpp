@@ -7,6 +7,7 @@
 #include <format>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 /// @file
 /// Shared helpers every correction is built from: object liveness, the geometry
@@ -121,4 +122,66 @@ bool apply_center_scale(UWidget* widget, const Scale& scale);
 /// @param label Prefix for the log line.
 /// @return A log line when the scale changed, empty otherwise.
 std::string expand_backdrop(UWidget* widget, const std::string& key, const std::string& label);
+
+/// @brief Spawns the opaque black image that sits behind a wrapped widget.
+///
+/// Every image spawned here is remembered, so @ref is_mod_backdrop can tell
+/// one of ours from a background the game authored.
+///
+/// @return The image, hit-test invisible so it never takes input, or nullptr if
+///         the allocation failed.
+UImage* spawn_backdrop_image(UWidgetTree* tree);
+
+/// @brief Whether this widget is a backdrop this mod spawned.
+///
+/// A wrapped tree has the shape a menu screen does -- a root overlay whose
+/// first filling child is a resource-free image -- so a fix that searches for
+/// menu dimming has to skip the backdrops another fix already owns, rather
+/// than writing a render scale to a widget it does not control.
+bool is_mod_backdrop(const UWidget* widget);
+
+/// @brief Adds a child that fills an overlay on both axes.
+/// @return Whether the overlay gave the child a slot.
+bool fill_overlay(UOverlay* overlay, UWidget* child);
+
+/// @brief The visibility a wrapper takes from the widget it wraps.
+///
+/// Visible becomes SelfHitTestInvisible, so a wrapper never takes input the
+/// widget inside it would not have taken.
+ESlateVisibility mirrored_visibility(ESlateVisibility value);
+
+/// @brief A widget-tree root this mod wrapped, held as identities only.
+///
+/// The widgets are re-derived from these rather than stored, so a collected and
+/// reused object index is detected rather than dereferenced.
+struct BackdropWrapper {
+    int overlay;            ///< The overlay that replaced the tree root.
+    int black;              ///< The black image behind the root's content.
+    std::string black_name; ///< Full name @ref black had when it was recorded.
+};
+
+/// @brief The backdrop a wrapper recorded, if that index still refers to it.
+UImage* live_backdrop(const BackdropWrapper& wrapper);
+
+/// @brief Holds a flag for as long as a wrap is spawning widgets.
+///
+/// Spawning and reparenting trigger visibility changes of their own, and the
+/// callback they arrive at must not mistake them for the game dismissing what
+/// is being wrapped.
+class WrapGuard {
+    bool& flag;
+
+public:
+    explicit WrapGuard(bool& flag) : flag(flag) {
+        flag = true;
+    }
+
+    ~WrapGuard() {
+        flag = false;
+    }
+
+    WrapGuard(const WrapGuard&) = delete;
+    WrapGuard& operator=(const WrapGuard&) = delete;
+};
+
 } // namespace ffrs

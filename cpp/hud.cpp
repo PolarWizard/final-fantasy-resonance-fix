@@ -75,6 +75,89 @@ Baseline* tooltip_baseline(const std::string& key, const FVector2D& inset) {
     return &tooltip_baselines.emplace(key, Baseline{}).first->second;
 }
 
+// A top-level screen is owned by the overall layout's widget tree. Nested
+// controls have another UserWidget owner and must keep their authored bounds.
+bool top_level_screen(UUserWidget* screen) {
+    auto tree = screen->Outer;
+    auto owner = live(tree) && tree->IsA(UWidgetTree::StaticClass()) ? tree->Outer : nullptr;
+    return live(owner) && owner->Class == UWBP_OverAllLayout_C::StaticClass();
+}
+
+bool unpositioned(UWidget* widget) {
+    const auto& transform = widget->RenderTransform;
+    return approximately(transform.Translation.X, 0) && approximately(transform.Translation.Y, 0)
+           && approximately(transform.Angle, 0) && approximately(transform.Shear.X, 0)
+           && approximately(transform.Shear.Y, 0);
+}
+
+// Follow only the full-fill, backmost branch. Crossing a UserWidget's tree
+// lets reusable background components satisfy exactly the same rules as an
+// image embedded directly in the screen. Always scale the leaf image, never
+// a container that could also carry menu controls.
+UWidget* background_image(UWidget* node) {
+    for (int depth = 0; depth < 32 && live(node); ++depth) {
+        if (!unpositioned(node)) {
+            return nullptr;
+        }
+        if (node->IsA(UImage::StaticClass())) {
+            // UImage draws both flat dimming and artwork. Only resource-free
+            // brushes are solid fills; textures, materials (including dynamic
+            // instances), and named/dynamically loaded images stay authored.
+            const auto& brush = static_cast<UImage*>(node)->Brush;
+            return !brush.ResourceObject && brush.ResourceName.IsNone()
+                           && !brush.bIsDynamicallyLoaded
+                       ? node
+                       : nullptr;
+        }
+        if (node->IsA(UUserWidget::StaticClass())) {
+            auto tree = static_cast<UUserWidget*>(node)->WidgetTree;
+            node = live(tree) ? tree->RootWidget : nullptr;
+            continue;
+        }
+        if (!node->IsA(UOverlay::StaticClass())) {
+            return nullptr;
+        }
+        const auto& slots = static_cast<UOverlay*>(node)->Slots;
+        if (slots.Num() == 0 || !live(slots[0]) || !slots[0]->IsA(UOverlaySlot::StaticClass())) {
+            return nullptr;
+        }
+        auto slot = static_cast<UOverlaySlot*>(slots[0]);
+        if (slot->HorizontalAlignment != EHorizontalAlignment::HAlign_Fill
+            || slot->VerticalAlignment != EVerticalAlignment::VAlign_Fill
+            || !approximately(slot->Padding.Left, 0) || !approximately(slot->Padding.Right, 0)
+            || !approximately(slot->Padding.Top, 0) || !approximately(slot->Padding.Bottom, 0)) {
+            return nullptr;
+        }
+        node = slot->Content;
+    }
+    return nullptr;
+}
+
+UWidget* embedded_menu_backdrop(UWidget* widget) {
+    if (!widget->IsA(UUserWidget::StaticClass()) && !widget->IsA(UImage::StaticClass())) {
+        return nullptr;
+    }
+    // A reusable component's rebuild/show also reaches its owning screen.
+    // This is event-driven and does not cache widgets across collection.
+    auto node = widget;
+    for (int depth = 0; depth < 32 && live(node); ++depth, node = outward(node)) {
+        if (node->IsA(UUserWidget::StaticClass())
+            && top_level_screen(static_cast<UUserWidget*>(node))) {
+            auto tree = static_cast<UUserWidget*>(node)->WidgetTree;
+            auto root = live(tree) ? tree->RootWidget : nullptr;
+            // Require a screen containing a background and foreground content.
+            // A movie whose entire root is an image is not a menu background.
+            if (!live(root) || !root->IsA(UOverlay::StaticClass())
+                || static_cast<UOverlay*>(root)->Slots.Num() < 2) {
+                return nullptr;
+            }
+            auto background = background_image(root);
+            return is_mod_backdrop(background) ? nullptr : background;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
 /// @brief Takes the constrained root's inset back out of a tooltip's position.
@@ -154,19 +237,21 @@ rust::String correct_tooltip_position(std::size_t address, double aspect) {
 /// render-scaled about its center -- a 16:9 root on a 32:9 screen by 2,1.
 /// Layout, hit testing and every sibling stay exactly as authored.
 ///
-/// The instance name is matched as an FName, so no string is built per
-/// visibility change, and it identifies the dimming widget in any layout that
-/// embeds one rather than one menu at a time.
+/// Backgrounds are recognized by their full-fill position behind the screen
+/// controls, including across reusable widget trees, without widget-name rules.
 ///
 /// @param address The widget, from RCX at SetVisibility or the widget rebuild.
 /// @return A log line when the scale changed, empty otherwise.
 rust::String expand_menu_backdrop(std::size_t address) {
     auto widget = reinterpret_cast<UWidget*>(address);
-    static const auto dimming_name = UKismetStringLibrary::Conv_StringToName(L"WBP_BGDimming");
     // The blueprint's own WBP_BGDimming template arrives here as well as each
     // instance, and expand_backdrop writes a render scale: scaling the template
     // would hand that scale to every menu spawned later.
-    if (!live(widget) || widget->Name != dimming_name) {
+    if (!live(widget)) {
+        return {};
+    }
+    widget = embedded_menu_backdrop(widget);
+    if (!widget) {
         return {};
     }
     // On rebuild the widget has no geometry yet, and the walk inside

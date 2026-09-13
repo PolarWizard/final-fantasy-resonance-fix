@@ -23,8 +23,8 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("Cargo manifest directory missing"))
-                .join("5.6.1-0+UE5-FFRS")
-                .join("CppSDK")
+            .join("5.6.1-0+UE5-FFRS")
+            .join("CppSDK")
         });
     assert!(
         sdk.join("SDK/Basic.hpp").is_file(),
@@ -44,6 +44,7 @@ fn main() {
             "cpp/utils.cpp",
             "cpp/layout.cpp",
             "cpp/hud.cpp",
+            "cpp/map.cpp",
             "cpp/movies.cpp",
         ])
         .file(sdk.join("SDK/Basic.cpp"))

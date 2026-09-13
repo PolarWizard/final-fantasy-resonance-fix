@@ -12,8 +12,9 @@ mod hud;
 mod movies;
 
 use crate::{
+    bridge::ffi,
     config::Config,
-    utils::{ModuleInfo, SignatureHook, inject_hook},
+    utils::{ModuleInfo, SignatureHook, inject_hook, log_report},
 };
 
 /// Applies every fix the config enables.
@@ -67,6 +68,7 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
             }
             if hud {
                 hud::expand_menu_backdrop(widget);
+                log_report(unsafe { ffi::update_map_backdrop(widget, ctx.rdx as u8 as i32) });
             }
         });
     // Wrapping a movie root is only safe once the wrapper's dismissal is
@@ -88,6 +90,9 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
             }
             if hud {
                 hud::expand_menu_backdrop(widget);
+                if visibility_ready {
+                    log_report(unsafe { ffi::update_map_backdrop(widget, -1) });
+                }
             }
         });
     }

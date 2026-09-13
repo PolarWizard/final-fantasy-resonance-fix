@@ -30,12 +30,14 @@ rust::String constrain_hud_slot(std::size_t widget, std::size_t slot, std::uint3
                                 double aspect);
 rust::String correct_tooltip_position(std::size_t widget, double aspect);
 rust::String expand_menu_backdrop(std::size_t widget);
+rust::String update_map_backdrop(std::size_t widget, std::int32_t visibility);
 /// @}
 
 /// @name Movie corrections
 /// Defined in movies.cpp. Each takes a widget address out of a hook's registers.
 /// @{
 rust::String wrap_movie_root(std::size_t widget);
+rust::String on_battle_sequence_event(std::size_t parameter);
 void sync_movie_backdrop(std::size_t widget, std::uint8_t visibility);
 rust::String on_movie_transform(std::size_t widget);
 rust::String on_native_movie(std::size_t object, bool is_screen);
