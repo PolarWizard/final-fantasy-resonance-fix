@@ -132,6 +132,12 @@ std::string expand_backdrop(UWidget* widget, const std::string& key, const std::
 ///         the allocation failed.
 UImage* spawn_backdrop_image(UWidgetTree* tree);
 
+/// @brief The shape of the frame the encounter transition draws.
+///
+/// Defined in encounter.cpp, which sees the capture's target, and called from
+/// the HUD constraint that holds the transition's layout to that shape.
+double captured_aspect();
+
 /// @brief Whether this widget is a backdrop this mod spawned.
 ///
 /// A wrapped tree has the shape a menu screen does -- a root overlay whose

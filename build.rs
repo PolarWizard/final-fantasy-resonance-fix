@@ -36,6 +36,10 @@ fn main() {
         &[
             "class UObject* UGameplayStatics::SpawnObject(",
             "class FName UKismetStringLibrary::Conv_StringToName(",
+            "void UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(",
+            "void UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(",
+            "class UTextureRenderTarget2D* UKismetRenderingLibrary::CreateRenderTarget2D(",
+            "void UCanvas::K2_DrawTexture(",
         ],
     );
     let mut build = cxx_build::bridge("src/bridge.rs");
@@ -45,6 +49,7 @@ fn main() {
             "cpp/layout.cpp",
             "cpp/hud.cpp",
             "cpp/map.cpp",
+            "cpp/encounter.cpp",
             "cpp/movies.cpp",
         ])
         .file(sdk.join("SDK/Basic.cpp"))

@@ -1,6 +1,7 @@
 //! One module per fix: [`aspect_ratio`] patches bytes, [`hud`] owns everything
 //! that follows the centered UI root, [`movies`] everything that follows a
-//! playing movie.
+//! playing movie, [`encounter`] the screen capture an encounter transition
+//! draws.
 //!
 //! A mid-function hook owns the address it is installed at, so where both fixes
 //! correct through the same native callback there can only be one hook. Those
@@ -8,6 +9,7 @@
 //! corrections themselves stay in the module they belong to.
 
 mod aspect_ratio;
+mod encounter;
 mod hud;
 mod movies;
 
@@ -21,6 +23,11 @@ use crate::{
 pub fn install(module: &ModuleInfo, config: &Config) {
     aspect_ratio::apply(module);
     if config.hud.enable {
+        // Re-framing the capture and holding the transition's layout to its
+        // shape are halves of one correction, so both follow the HUD flag: a
+        // re-framed capture drawn across an unconstrained layout would be
+        // stretched by exactly what the re-frame trimmed.
+        encounter::install(module);
         hud::install(module, config.hud.aspect());
     }
     hook_shared_widget_updates(module, config);
@@ -51,6 +58,10 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
             }
             if hud {
                 hud::on_transform(widget, aspect);
+                // The transition's capture image is the first widget to touch
+                // the captured frame after the copy, which is where that frame
+                // is re-framed to the shape the transition draws it at.
+                log_report(unsafe { ffi::reframe_capture(widget) });
             }
         });
     }

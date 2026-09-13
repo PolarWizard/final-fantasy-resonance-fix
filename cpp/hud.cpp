@@ -262,7 +262,7 @@ rust::String expand_menu_backdrop(std::size_t address) {
     return expand_backdrop(widget, "menu_backdrop:" + name, "Menu backdrop: " + name);
 }
 
-/// @brief Holds the shared UI root inside a centered rectangle of @p aspect.
+/// @brief Holds a viewport root inside a centered rectangle of @p aspect.
 ///
 /// Anchors are ratios of the viewport, so measuring it in local units gives the
 /// identical rectangle at any resolution or DPI, and records the earliest
@@ -271,7 +271,7 @@ rust::String expand_menu_backdrop(std::size_t address) {
 /// @param widget_addr The root widget, from the register each hooked path uses.
 /// @param slot_addr Its FGameViewportWidgetSlot, written before the game reads it.
 /// @param path Which of the three hooked paths called, for the log.
-/// @param aspect The ratio to hold the root inside.
+/// @param aspect The ratio to hold the root inside, overridden for the encounter layout.
 /// @return A log line when the anchors changed, empty otherwise.
 rust::String constrain_hud_slot(std::size_t widget_addr, std::size_t slot_addr, std::uint32_t path,
                                 double aspect) {
@@ -280,7 +280,18 @@ rust::String constrain_hud_slot(std::size_t widget_addr, std::size_t slot_addr, 
     // TEST RDX,RDX / JZ -- the first bytes of its own signature. The engine
     // calls it with a null widget, so the hook sees one before the engine's
     // test does.
-    if (!widget || widget->Class != UWBP_OverAllLayout_C::StaticClass()) {
+    if (!live(widget)) {
+        return {};
+    }
+    // The encounter transition draws the captured frame as a picture of the
+    // capture's own shape, and encounter.cpp re-frames that frame to be one, so
+    // this layout is held to the capture's shape rather than the HUD's. Its
+    // Blueprint class is loaded on demand and absent from the static SDK, so it
+    // is recognised by the name the live class carries.
+    static const auto encounter = UKismetStringLibrary::Conv_StringToName(L"WBP_EncountLayout_C");
+    if (widget->Class->Name == encounter) {
+        aspect = captured_aspect();
+    } else if (widget->Class != UWBP_OverAllLayout_C::StaticClass()) {
         return {};
     }
     const auto viewport = viewport_local_size(widget);
@@ -296,7 +307,7 @@ rust::String constrain_hud_slot(std::size_t widget_addr, std::size_t slot_addr, 
     slot.Alignment = FVector2D{};
 
     return hud_report(
-        "native_hud:" + std::to_string(path),
+        "native_hud:" + widget->Class->GetName() + ":" + std::to_string(path),
         std::format("Native HUD slot: path={}, root={}, aspect={:g}, screen={:g}x{:g}, "
                     "anchors={:g},{:g}/{:g},{:g}",
                     path, widget->GetName(), aspect, viewport.X, viewport.Y, slot.Anchors.Minimum.X,

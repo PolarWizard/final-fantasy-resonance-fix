@@ -30,6 +30,8 @@ rust::String constrain_hud_slot(std::size_t widget, std::size_t slot, std::uint3
                                 double aspect);
 rust::String correct_tooltip_position(std::size_t widget, double aspect);
 rust::String expand_menu_backdrop(std::size_t widget);
+rust::String note_capture_target(std::size_t context, std::size_t target);
+rust::String reframe_capture(std::size_t widget);
 rust::String update_map_backdrop(std::size_t widget, std::int32_t visibility);
 /// @}
 
