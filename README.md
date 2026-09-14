@@ -34,9 +34,15 @@ If you're using VS Code, the same steps are wired up as tasks in `.vscode/tasks.
 - Edit `<game folder>/scripts/final_fantasy_resonance_fix.toml`
 
 ## Screenshots
-| ![Demo1](images/final-fantasy-resonance-fix-1.gif) |
-| --- |
-| <p align='center'> Fix disabled → Fix enabled </p> |
+| Ultrawide |
+| :---: |
+| ![Ultrawide demo](images/final-fantasy-resonance-fix-1.gif) |
+| Fix disabled → Fix enabled |
+
+| HUD Constraining |
+| :---: |
+| ![HUD constraining demo](images/final-fantasy-resonance-fix-2.gif) |
+| 32:9 → 21:9 → 16:9 |
 
 ## License
 Distributed under the MIT License. See [LICENSE](LICENSE) for more information. Third-party license text for every dependency can be generated with `python scripts/licenses.py`, which writes it out to `LICENSES`.
