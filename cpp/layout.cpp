@@ -1,5 +1,5 @@
 #include "bridge.hpp"
-#include "final-fantasy-resonance/src/bridge.rs.h"
+#include "final-fantasy-resonance-fix/src/bridge.rs.h"
 #include <algorithm>
 #include <cmath>
 
