@@ -12,6 +12,7 @@ mod aspect_ratio;
 mod encounter;
 mod hud;
 mod movies;
+mod post_processing;
 
 use crate::{
     bridge::ffi,
@@ -22,6 +23,7 @@ use crate::{
 /// Applies every fix the config enables.
 pub fn install(module: &ModuleInfo, config: &Config) {
     aspect_ratio::apply(module);
+    post_processing::install(module, config.post_processing);
     if config.hud.enable {
         // Re-framing the capture and holding the transition's layout to its
         // shape are halves of one correction, so both follow the HUD flag: a

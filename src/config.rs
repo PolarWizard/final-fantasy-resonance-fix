@@ -11,6 +11,7 @@ pub struct Config {
     pub super_enable: bool,
     pub hud: Hud,
     pub movies: Movies,
+    pub post_processing: PostProcessing,
 }
 
 /// `[hud]` -- the centered UI root, and with it the tooltip positions and the
@@ -28,6 +29,31 @@ pub struct Hud {
 #[serde(default, deny_unknown_fields)]
 pub struct Movies {
     pub enable: bool,
+}
+
+/// `true` retains the game's effect; `false` suppresses it in each final view.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PostProcessing {
+    pub motion_blur: bool,
+    pub depth_of_field: bool,
+    pub bloom: bool,
+    pub film_grain: bool,
+    pub chromatic_aberration: bool,
+    pub vignette: bool,
+}
+
+impl Default for PostProcessing {
+    fn default() -> Self {
+        Self {
+            motion_blur: true,
+            depth_of_field: true,
+            bloom: true,
+            film_grain: true,
+            chromatic_aberration: true,
+            vignette: true,
+        }
+    }
 }
 
 impl Hud {
@@ -53,6 +79,7 @@ impl Default for Config {
             super_enable: true,
             hud: Hud::default(),
             movies: Movies::default(),
+            post_processing: PostProcessing::default(),
         }
     }
 }

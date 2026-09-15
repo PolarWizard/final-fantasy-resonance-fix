@@ -51,6 +51,7 @@ fn main() {
             "cpp/map.cpp",
             "cpp/encounter.cpp",
             "cpp/movies.cpp",
+            "cpp/post_processing.cpp",
         ])
         .file(sdk.join("SDK/Basic.cpp"))
         .file(sdk.join("SDK/CoreUObject_functions.cpp"))

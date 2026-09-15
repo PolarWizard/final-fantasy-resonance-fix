@@ -13,3 +13,13 @@ enable = true
 [hud]
 enable = false
 constrain = 0
+
+# By default the game has all these post processing
+# effects on and active.
+[post_processing]
+motion_blur = true
+depth_of_field = true
+bloom = true
+film_grain = true
+chromatic_aberration = true
+vignette = true

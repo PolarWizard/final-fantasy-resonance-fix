@@ -10,6 +10,13 @@
 
 namespace ffrs {
 
+/// @name Post-processing controls
+/// Defined in post_processing.cpp and called from the final-view hook.
+/// @{
+struct PostProcessOptions;
+void apply_post_processing(std::size_t settings, const PostProcessOptions& options) noexcept;
+/// @}
+
 /// @name Layout arithmetic
 /// Pure functions, defined in layout.cpp and exercised from src/tests/layout.rs.
 /// @{

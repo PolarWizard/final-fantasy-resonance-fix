@@ -1,5 +1,13 @@
 #[cxx::bridge(namespace = "ffrs")]
 pub mod ffi {
+    pub struct PostProcessOptions {
+        pub motion_blur: bool,
+        pub depth_of_field: bool,
+        pub bloom: bool,
+        pub film_grain: bool,
+        pub chromatic_aberration: bool,
+        pub vignette: bool,
+    }
     pub struct OffsetState {
         pub baseline: f32,
         pub last_written: f32,
@@ -43,9 +51,14 @@ pub mod ffi {
         unsafe fn sync_movie_backdrop(widget: usize, visibility: u8);
         unsafe fn on_movie_transform(widget: usize) -> String;
         unsafe fn on_native_movie(object: usize, is_screen: bool) -> String;
+        unsafe fn apply_post_processing(settings: usize, options: &PostProcessOptions);
     }
 }
 
 #[cfg(test)]
 #[path = "tests/layout.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/post_processing.rs"]
+mod post_processing_tests;
