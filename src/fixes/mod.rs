@@ -10,6 +10,7 @@
 
 mod aspect_ratio;
 mod encounter;
+mod fonts;
 mod hud;
 mod movies;
 mod post_processing;
@@ -22,6 +23,7 @@ use crate::{
 
 /// Applies every fix the config enables.
 pub fn install(module: &ModuleInfo, config: &Config) {
+    fonts::install(module, &config.fonts);
     aspect_ratio::apply(module);
     post_processing::install(module, config.post_processing);
     if config.hud.enable {

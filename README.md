@@ -8,6 +8,7 @@
 - Movies are constrained to their original 16:9 format
 - Add ability to constrain HUD
 - Add ability to configure various post processing effects
+- Add ability to load and use a custom font
 
 ## Build and Install
 Requires:

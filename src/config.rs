@@ -12,6 +12,15 @@ pub struct Config {
     pub hud: Hud,
     pub movies: Movies,
     pub post_processing: PostProcessing,
+    pub fonts: Fonts,
+}
+
+/// One loose font file, resolved relative to the ASI's directory.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Fonts {
+    pub enable: bool,
+    pub file: PathBuf,
 }
 
 /// `[hud]` -- the centered UI root, and with it the tooltip positions and the
@@ -80,6 +89,7 @@ impl Default for Config {
             hud: Hud::default(),
             movies: Movies::default(),
             post_processing: PostProcessing::default(),
+            fonts: Fonts::default(),
         }
     }
 }
@@ -132,7 +142,12 @@ fn load_inner(this_module: HMODULE) -> Config {
     };
 
     match toml::from_str::<Config>(&text) {
-        Ok(config) => {
+        Ok(mut config) => {
+            // Resolve beside this DLL, just like the TOML. join() also accepts
+            // absolute paths. Keep an empty filename empty so it fails to open.
+            if !config.fonts.file.as_os_str().is_empty() {
+                config.fonts.file = dir.join(&config.fonts.file);
+            }
             log::info!("config: loaded {}", path.display());
             config
         }
