@@ -15,7 +15,7 @@
             "command": "python",
             "args": [
                 "${workspaceFolder}\\scripts\\install.py",
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\FINAL FANTASY RESONANCE DEMO\\FFRS\\Binaries\\Win64"
+                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\FINAL FANTASY RESONANCE\\FFRS\\Binaries\\Win64"
             ],
             "group": "build",
             "problemMatcher": ["$rustc"]
@@ -34,7 +34,7 @@
             "command": "python",
             "args": [
                 "${workspaceFolder}\\scripts\\loader.py",
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\FINAL FANTASY RESONANCE DEMO\\FFRS\\Binaries\\Win64"
+                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\FINAL FANTASY RESONANCE\\FFRS\\Binaries\\Win64"
             ],
             "group": "build",
             "problemMatcher": []
