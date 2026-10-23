@@ -1,10 +1,7 @@
 //! The encounter transition's screen capture, re-framed to the shape it is
 //! drawn at.
 
-use std::{
-    cell::{Cell, RefCell},
-    ptr::null_mut,
-};
+use std::{cell::Cell, ptr::null_mut};
 
 use sdk::{
     CoreUObject::{FLinearColor, FVector2D, UObject},
@@ -21,13 +18,11 @@ use crate::utils::{ModuleInfo, SignatureHook, inject_hook, log_report};
 
 thread_local! {
     // The target the back buffer capture was last handed, a context that
-    // resolves the world for the draws below, the scratch target those draws
-    // bounce through, and whether a capture is waiting to be re-framed.
-    // Identities are re-checked before use rather than trusted across frames.
+    // resolves the world for the draws below, and whether a capture is waiting
+    // to be re-framed. Identities are re-checked before use rather than
+    // trusted across frames.
     static CAPTURE_TARGET: Cell<*mut UTextureRenderTarget2D> = const { Cell::new(null_mut()) };
     static CAPTURE_CONTEXT: Cell<*mut UObject> = const { Cell::new(null_mut()) };
-    static SCRATCH: Cell<*mut UTextureRenderTarget2D> = const { Cell::new(null_mut()) };
-    static SCRATCH_NAME: RefCell<String> = const { RefCell::new(String::new()) };
     static PENDING: Cell<bool> = const { Cell::new(false) };
 }
 
@@ -144,40 +139,31 @@ fn draw_region(
     true
 }
 
-/// The scratch target the re-frame reads from, created on demand.
+/// The scratch target the re-frame reads from, created fresh for each capture.
 ///
 /// A draw cannot sample the target it writes, so the captured frame is copied
 /// aside and the crop is taken from the copy. Nothing in the game holds this
-/// object, so collection may take it between transitions; its name is what
-/// notices, and a fresh one is made when it does.
+/// object, so collection may take it between transitions, and a pointer kept
+/// from the last one may point at freed memory that `live` cannot tell apart
+/// from a live object. Creating one per capture -- once per transition --
+/// never touches a collected target, and the one made here is used within the
+/// same call, before collection can run.
 ///
 /// Returns a target in the capture's own size and format, or null.
 fn bounce_target(
     context: *mut UObject,
     target: *mut UTextureRenderTarget2D,
 ) -> *mut UTextureRenderTarget2D {
-    let scratch = SCRATCH.get();
-    let current = live(scratch)
-        && SCRATCH_NAME.with_borrow(|name| *name == unsafe { (*scratch).GetFullName() });
-    if !current {
-        let target = unsafe { &*target };
-        let scratch = UKismetRenderingLibrary::CreateRenderTarget2D(
-            context,
-            target.SizeX,
-            target.SizeY,
-            target.RenderTargetFormat,
-            &target.ClearColor,
-            false,
-            false,
-        );
-        SCRATCH.set(scratch);
-        SCRATCH_NAME.set(if live(scratch) {
-            unsafe { (*scratch).GetFullName() }
-        } else {
-            String::new()
-        });
-    }
-    let scratch = SCRATCH.get();
+    let target = unsafe { &*target };
+    let scratch = UKismetRenderingLibrary::CreateRenderTarget2D(
+        context,
+        target.SizeX,
+        target.SizeY,
+        target.RenderTargetFormat,
+        &target.ClearColor,
+        false,
+        false,
+    );
     if live(scratch) { scratch } else { null_mut() }
 }
 
