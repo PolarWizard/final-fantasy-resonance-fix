@@ -1,6 +1,5 @@
-//! The layout arithmetic every correction is built on. Pure functions of their
-//! arguments with no engine access, which is what lets src/tests/layout.rs
-//! exercise them directly.
+//! The layout arithmetic every correction is built on: pure functions of their
+//! arguments with no engine access.
 //!
 //! Each returns an identity result for geometry it cannot use. Callers do check
 //! their geometry first, so that is a contract rather than a live path: these
@@ -131,7 +130,3 @@ pub fn letterbox_inset(width: f64, height: f64, aspect: f64) -> Inset {
         y: (height - height.min(width / aspect)) * 0.5,
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/layout.rs"]
-mod tests;

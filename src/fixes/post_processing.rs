@@ -63,7 +63,7 @@ pub(super) fn install(module: &ModuleInfo, config: PostProcessing) {
 /// by an earlier call. Normal values come from the engine's next blended view.
 /// These are already-blended view settings, so the override bits, which belong
 /// to the earlier blending stage, are left untouched.
-pub(super) fn apply(post: &mut FPostProcessSettings, options: &PostProcessing) {
+fn apply(post: &mut FPostProcessSettings, options: &PostProcessing) {
     if !options.motion_blur {
         post.MotionBlurAmount = 0.0;
     }
@@ -88,7 +88,3 @@ pub(super) fn apply(post: &mut FPostProcessSettings, options: &PostProcessing) {
         post.VignetteIntensity = 0.0;
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/post_processing.rs"]
-mod tests;

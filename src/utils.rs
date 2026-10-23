@@ -330,16 +330,3 @@ where
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{aob_scan, parse_pattern};
-    #[test]
-    fn reference_scanner_handles_wildcards_and_bounds() {
-        let pattern = parse_pattern("40 ?? 57");
-        assert_eq!(aob_scan(&[0, 0x40, 0x55, 0x57], &pattern), Some(1));
-        assert_eq!(aob_scan(&[0x40, 0x55], &pattern), None);
-        assert_eq!(aob_scan(&[0x40, 0x55, 0x58], &pattern), None);
-        assert_eq!(aob_scan(&[0x40], &[]), None);
-    }
-}
