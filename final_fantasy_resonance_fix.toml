@@ -5,6 +5,11 @@ super_enable = true
 [movies]
 enable = true
 
+# If enabled the game keeps running while its window does not have focus,
+# instead of freezing until it gets focus back.
+[background]
+enable = true
+
 # If enabled constrains the HUD to one of the presets:
 # 0 - 16:9
 # 1 - 21:9

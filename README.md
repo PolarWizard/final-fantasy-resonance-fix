@@ -6,6 +6,7 @@
 ## Fixes
 - Remove black bars in ultrawide resolutions
 - Movies are constrained to their original 16:9 format
+- Game keeps running when its window loses focus
 - Add ability to constrain HUD
 - Add ability to configure various post processing effects
 - Add ability to load and use a custom font

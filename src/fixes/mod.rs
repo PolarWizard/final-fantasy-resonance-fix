@@ -1,8 +1,8 @@
-//! One module per fix: [`aspect_ratio`] patches bytes, [`hud`] owns everything
-//! that follows the centered UI root, [`map`] the world map's backdrop,
-//! [`movies`] everything that follows a playing movie, [`encounter`] the screen
-//! capture an encounter transition draws. [`layout`] and [`widgets`] hold what
-//! they share.
+//! One module per fix: [`aspect_ratio`] and [`background`] patch bytes, [`hud`]
+//! owns everything that follows the centered UI root, [`map`] the world map's
+//! backdrop, [`movies`] everything that follows a playing movie, [`encounter`]
+//! the screen capture an encounter transition draws. [`layout`] and [`widgets`]
+//! hold what they share.
 //!
 //! A mid-function hook owns the address it is installed at, so where both fixes
 //! correct through the same native callback there can only be one hook. Those
@@ -10,6 +10,7 @@
 //! corrections themselves stay in the module they belong to.
 
 mod aspect_ratio;
+mod background;
 mod encounter;
 mod fonts;
 mod hud;
@@ -30,6 +31,9 @@ use crate::{
 pub fn install(module: &ModuleInfo, config: &Config) {
     fonts::install(module, &config.fonts);
     aspect_ratio::apply(module);
+    if config.background.enable {
+        background::apply(module);
+    }
     post_processing::install(module, config.post_processing);
     if config.hud.enable {
         // Re-framing the capture and holding the transition's layout to its

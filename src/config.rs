@@ -11,6 +11,7 @@ pub struct Config {
     pub super_enable: bool,
     pub hud: Hud,
     pub movies: Movies,
+    pub background: Background,
     pub post_processing: PostProcessing,
     pub fonts: Fonts,
 }
@@ -37,6 +38,13 @@ pub struct Hud {
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Movies {
+    pub enable: bool,
+}
+
+/// `[background]` -- keeping the game running while its window is unfocused.
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Background {
     pub enable: bool,
 }
 
@@ -88,6 +96,7 @@ impl Default for Config {
             super_enable: true,
             hud: Hud::default(),
             movies: Movies::default(),
+            background: Background::default(),
             post_processing: PostProcessing::default(),
             fonts: Fonts::default(),
         }
@@ -102,6 +111,11 @@ impl Default for Hud {
     }
 }
 impl Default for Movies {
+    fn default() -> Self {
+        Self { enable: true }
+    }
+}
+impl Default for Background {
     fn default() -> Self {
         Self { enable: true }
     }
@@ -184,7 +198,7 @@ mod tests {
             toml::from_str(include_str!("../final_fantasy_resonance_fix.toml")).unwrap();
         // hud.enable reflects whatever the shipped file currently asks for,
         // not a fixed expectation of this test.
-        assert!(current.super_enable && current.movies.enable);
+        assert!(current.super_enable && current.movies.enable && current.background.enable);
         assert_eq!(current.hud.constrain, 0);
         // deny_unknown_fields drops every other setting back to its default on
         // a single bad key, at the top level and inside a table alike.
@@ -196,7 +210,7 @@ mod tests {
     fn an_omitted_table_or_key_keeps_the_shipped_defaults() {
         let config: Config = toml::from_str("super_enable = false").unwrap();
         assert!(!config.super_enable);
-        assert!(config.hud.enable && config.movies.enable);
+        assert!(config.hud.enable && config.movies.enable && config.background.enable);
         let partial: Config = toml::from_str("[hud]\nconstrain = 2").unwrap();
         assert!(partial.hud.enable);
         assert_eq!(partial.hud.constrain, 2);
