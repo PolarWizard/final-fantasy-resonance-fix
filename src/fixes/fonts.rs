@@ -310,17 +310,19 @@ fn read_font(path: &Path) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// Loads the configured loose font and hooks both memory and streamed faces.
+/// Loads the font found beside the ASI and hooks both memory and streamed faces.
 ///
-/// Config loading has already resolved a relative filename beside the ASI.
-/// Disabled settings or file-read failures skip installation. Each path needs
-/// its own hook pair; partial installation is logged because it leaves some
-/// font loads unchanged.
+/// Config loading has already picked the font. Disabled settings, no font, or
+/// file-read failures skip installation. Each path needs its own hook pair;
+/// partial installation is logged because it leaves some font loads unchanged.
 pub(super) fn install(module: &ModuleInfo, config: &Fonts) {
     if !config.enable {
         return;
     }
-    let path = &config.file;
+    let Some(path) = &config.file else {
+        log::info!("Fonts: no .ttf or .otf in the scripts folder, keeping the game's font");
+        return;
+    };
     let bytes = match read_font(path) {
         Ok(bytes) => bytes,
         Err(error) => {

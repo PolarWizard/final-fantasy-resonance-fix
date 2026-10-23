@@ -29,11 +29,7 @@ film_grain = true
 chromatic_aberration = true
 vignette = true
 
-# If enabled replaces the default game font with your custom font.
-# `file` takes both relative paths from the `scripts` folder this
-# config toml resides in and also absolute paths.
-# Example relative: file = "fonts/MyFont.ttf"
-# Example absolute: file = 'C:\Some\Absolute\Path\To\MyFont.ttf'
+# If enabled replaces the game's font with a .ttf or .otf font file
+# placed in this `scripts` folder. Without one the game's font is kept.
 [fonts]
 enable = false
-file = ""

@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use windows::Win32::Foundation::HMODULE;
@@ -16,12 +16,15 @@ pub struct Config {
     pub fonts: Fonts,
 }
 
-/// One loose font file, resolved relative to the ASI's directory.
+/// `[fonts]` -- swapping the game's font for a `.ttf` or `.otf` placed beside
+/// the ASI. `file` is not read from the TOML: loading fills it with the font
+/// [`find_font`] picks, and leaves it `None` when there is none.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Fonts {
     pub enable: bool,
-    pub file: PathBuf,
+    #[serde(skip)]
+    pub file: Option<PathBuf>,
 }
 
 /// `[hud]` -- the centered UI root, and with it the tooltip positions and the
@@ -157,10 +160,8 @@ fn load_inner(this_module: HMODULE) -> Config {
 
     match toml::from_str::<Config>(&text) {
         Ok(mut config) => {
-            // Resolve beside this DLL, just like the TOML. join() also accepts
-            // absolute paths. Keep an empty filename empty so it fails to open.
-            if !config.fonts.file.as_os_str().is_empty() {
-                config.fonts.file = dir.join(&config.fonts.file);
+            if config.fonts.enable {
+                config.fonts.file = find_font(&dir);
             }
             log::info!("config: loaded {}", path.display());
             config
@@ -173,6 +174,31 @@ fn load_inner(this_module: HMODULE) -> Config {
             Config::default()
         }
     }
+}
+
+/// The font to swap in: the first `.ttf` or `.otf` in `dir` by name, so the
+/// pick does not depend on the order the directory lists its files in.
+fn find_font(dir: &Path) -> Option<PathBuf> {
+    let mut fonts: Vec<PathBuf> = fs::read_dir(dir)
+        .ok()?
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .filter(|path| {
+            path.is_file()
+                && path.extension().is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("ttf") || extension.eq_ignore_ascii_case("otf")
+                })
+        })
+        .collect();
+    fonts.sort();
+    if fonts.len() > 1 {
+        log::warn!(
+            "config: {} fonts in {}, using {}",
+            fonts.len(),
+            dir.display(),
+            fonts[0].display()
+        );
+    }
+    fonts.into_iter().next()
 }
 
 /// Gets the filesystem path from the module.
@@ -190,7 +216,23 @@ pub(crate) fn module_dir(module: HMODULE) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, Hud};
+    use std::fs;
+
+    use super::{Config, Hud, find_font};
+
+    #[test]
+    fn the_font_is_the_first_ttf_or_otf_by_name() {
+        let dir = std::env::temp_dir().join(format!("ffrs_fonts_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(find_font(&dir), None);
+        for name in ["b.otf", "notes.txt", "A.TTF"] {
+            fs::write(dir.join(name), b"").unwrap();
+        }
+        assert_eq!(find_font(&dir), Some(dir.join("A.TTF")));
+        fs::remove_dir_all(&dir).unwrap();
+        // A path in the TOML is no longer a setting.
+        assert!(toml::from_str::<Config>("[fonts]\nfile = \"x.ttf\"").is_err());
+    }
 
     #[test]
     fn the_shipped_config_loads_and_a_typo_does_not() {
