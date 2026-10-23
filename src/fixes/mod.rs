@@ -1,7 +1,8 @@
 //! One module per fix: [`aspect_ratio`] patches bytes, [`hud`] owns everything
-//! that follows the centered UI root, [`movies`] everything that follows a
-//! playing movie, [`encounter`] the screen capture an encounter transition
-//! draws.
+//! that follows the centered UI root, [`map`] the world map's backdrop,
+//! [`movies`] everything that follows a playing movie, [`encounter`] the screen
+//! capture an encounter transition draws. [`layout`] and [`widgets`] hold what
+//! they share.
 //!
 //! A mid-function hook owns the address it is installed at, so where both fixes
 //! correct through the same native callback there can only be one hook. Those
@@ -12,13 +13,17 @@ mod aspect_ratio;
 mod encounter;
 mod fonts;
 mod hud;
+mod layout;
+mod map;
 mod movies;
 mod post_processing;
+mod widgets;
+
+use sdk::UMG::{ESlateVisibility, UWidget};
 
 use crate::{
-    bridge::ffi,
     config::Config,
-    utils::{ModuleInfo, SignatureHook, inject_hook, log_report},
+    utils::{ModuleInfo, SignatureHook, inject_hook},
 };
 
 /// Applies every fix the config enables.
@@ -55,8 +60,8 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
             signature: "48 8B C4 48 89 58 18 48 89 78 20 55 48 8D 68 A1 48 81 EC F0 00 00 00 48 8D 55 B7 48 89 70 10 48 8B D9 E8 ?? ?? ?? ??",
             offset: 0,
         };
-        inject_hook(module, &transform, move |ctx| {
-            let widget = ctx.rcx as usize;
+        inject_hook(module, &transform, move |ctx| unsafe {
+            let widget = ctx.rcx as *mut UWidget;
             if movies {
                 movies::on_transform(widget);
             }
@@ -65,7 +70,7 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
                 // The transition's capture image is the first widget to touch
                 // the captured frame after the copy, which is where that frame
                 // is re-framed to the shape the transition draws it at.
-                log_report(unsafe { ffi::reframe_capture(widget) });
+                encounter::reframe_capture(widget);
             }
         });
     }
@@ -76,14 +81,15 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
         offset: 0,
     };
     let visibility_ready = (movies || hud)
-        && inject_hook(module, &visibility, move |ctx| {
-            let widget = ctx.rcx as usize;
+        && inject_hook(module, &visibility, move |ctx| unsafe {
+            let widget = ctx.rcx as *mut UWidget;
+            let value = ESlateVisibility(ctx.rdx as u8);
             if movies {
-                movies::on_visibility(widget, ctx.rdx as u8);
+                movies::on_visibility(widget, value);
             }
             if hud {
                 hud::expand_menu_backdrop(widget);
-                log_report(unsafe { ffi::update_map_backdrop(widget, ctx.rdx as u8 as i32) });
+                map::update_backdrop(widget, Some(value));
             }
         });
     // Wrapping a movie root is only safe once the wrapper's dismissal is
@@ -98,16 +104,16 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
             signature: "40 55 53 56 41 57 48 8D AC 24 98 FE FF FF 48 81 EC 68 02 00 00 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 58 01 00 00",
             offset: 0x4E,
         };
-        inject_hook(module, &rebuild, move |ctx| {
-            let widget = ctx.rbx as usize;
+        inject_hook(module, &rebuild, move |ctx| unsafe {
+            let widget = ctx.rbx as *mut UWidget;
             if wrap_movies {
-                movies::on_rebuild(widget);
+                movies::on_rebuild(widget.cast());
             }
             if hud {
                 hud::expand_menu_backdrop(widget);
-                log_report(unsafe { ffi::hide_battle_shadow(widget) });
+                hud::hide_battle_shadow(widget.cast());
                 if visibility_ready {
-                    log_report(unsafe { ffi::update_map_backdrop(widget, -1) });
+                    map::update_backdrop(widget, None);
                 }
             }
         });

@@ -1,33 +1,33 @@
-use super::ffi::{OffsetState, apply_offset, fit_16_9, full_bleed_scale, letterbox_inset};
+use super::{OffsetState, apply_offset, fit_16_9, full_bleed_scale, letterbox_inset};
 
 #[test]
 fn offset_preserves_authored_value_without_accumulating_on_ticks_or_resize() {
-    let mut state = super::ffi::OffsetState {
+    let mut state = OffsetState {
         baseline: 0.0,
         last_written: 0.0,
         initialized: false,
     };
-    let mut padding = super::ffi::apply_offset(&mut state, 12.0, 960.0);
+    let mut padding = apply_offset(&mut state, 12.0, 960.0);
     assert_eq!(padding, 972.0);
     for _ in 0..100 {
-        padding = super::ffi::apply_offset(&mut state, padding, 960.0);
+        padding = apply_offset(&mut state, padding, 960.0);
         assert_eq!(padding, 972.0);
     }
-    padding = super::ffi::apply_offset(&mut state, padding, 440.0);
+    padding = apply_offset(&mut state, padding, 440.0);
     assert_eq!(padding, 452.0);
-    padding = super::ffi::apply_offset(&mut state, padding, 0.0);
+    padding = apply_offset(&mut state, padding, 0.0);
     assert_eq!(padding, 12.0);
 }
 #[test]
 fn offset_respects_game_reset() {
-    let mut state = super::ffi::OffsetState {
+    let mut state = OffsetState {
         baseline: 0.0,
         last_written: 0.0,
         initialized: false,
     };
-    assert_eq!(super::ffi::apply_offset(&mut state, 0.0, 960.0), 960.0);
-    assert_eq!(super::ffi::apply_offset(&mut state, 20.0, 960.0), 980.0);
-    assert_eq!(super::ffi::apply_offset(&mut state, 980.0, 0.0), 20.0);
+    assert_eq!(apply_offset(&mut state, 0.0, 960.0), 960.0);
+    assert_eq!(apply_offset(&mut state, 20.0, 960.0), 980.0);
+    assert_eq!(apply_offset(&mut state, 980.0, 0.0), 20.0);
 }
 #[test]
 fn each_constrain_preset_insets_the_root_by_its_own_ratio() {

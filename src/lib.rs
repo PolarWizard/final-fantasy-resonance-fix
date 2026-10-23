@@ -1,4 +1,3 @@
-mod bridge;
 mod config;
 mod fixes;
 #[allow(dead_code)] // Shared reference utilities also serve mods with memory patches.

@@ -1,25 +1,17 @@
 //! Suppresses selected effects after the engine has finalized each view.
+//!
+//! Writes affect the current view; later views receive the same overrides when
+//! they reach the hook. Custom materials, HUD artwork, and effects baked into
+//! movie frames are outside these controls.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use sdk::Engine::FPostProcessSettings;
+
 use crate::{
-    bridge::ffi,
     config::PostProcessing,
     utils::{ModuleInfo, SignatureHook, inject_hook},
 };
-
-impl From<PostProcessing> for ffi::PostProcessOptions {
-    fn from(value: PostProcessing) -> Self {
-        Self {
-            motion_blur: value.motion_blur,
-            depth_of_field: value.depth_of_field,
-            bloom: value.bloom,
-            film_grain: value.film_grain,
-            chromatic_aberration: value.chromatic_aberration,
-            vignette: value.vignette,
-        }
-    }
-}
 
 pub(super) fn install(module: &ModuleInfo, config: PostProcessing) {
     if config.motion_blur
@@ -44,12 +36,57 @@ pub(super) fn install(module: &ModuleInfo, config: PostProcessing) {
         signature: "E8 ?? ?? ?? ?? 84 C0 74 08 48 8B CB E8 ?? ?? ?? ?? 48 8B 5C 24 60 48 8B 6C 24 68 48 8B 74 24 70 48 8B 7C 24 78 0F 28 74 24 30 48 83 C4 40 41 5F 41 5E 41 5C C3",
         offset: 17,
     };
-    let options = ffi::PostProcessOptions::from(config);
     let reported = AtomicBool::new(false);
     inject_hook(module, &hook, move |ctx| {
-        unsafe { ffi::apply_post_processing(ctx.rbx as usize + 0x1320, &options) };
+        let settings = (ctx.rbx as usize + 0x1320) as *mut FPostProcessSettings;
+        apply(unsafe { &mut *settings }, &config);
         if !reported.swap(true, Ordering::Relaxed) {
             log::info!("Post processing: first final view processed ({config:?})");
         }
     });
 }
+
+/// Suppresses selected effects in a view's final post-process settings, after
+/// the engine has finished blending them.
+///
+/// Disabled effects have their amount or intensity cleared. Depth of field
+/// also clears focal distance, scale, and depth-blur radius: nonpositive focal
+/// distance selects the native diaphragm calculation's zero-blur branch, while
+/// scale and radius cover the other depth-of-field contributions. Aperture and
+/// depth-blur amount remain unchanged, including the amount used as a divisor
+/// by the native depth-blur calculation.
+///
+/// Applying the same options repeatedly is idempotent. Setting an option back
+/// to true leaves the supplied value alone; it does not restore a value cleared
+/// by an earlier call. Normal values come from the engine's next blended view.
+/// These are already-blended view settings, so the override bits, which belong
+/// to the earlier blending stage, are left untouched.
+pub(super) fn apply(post: &mut FPostProcessSettings, options: &PostProcessing) {
+    if !options.motion_blur {
+        post.MotionBlurAmount = 0.0;
+    }
+    if !options.depth_of_field {
+        // The native diaphragm CoC calculation takes its zero-blur branch
+        // when focal distance <= 0. Scale also covers the other DOF path;
+        // radius suppresses the separate distance-based depth blur.
+        post.DepthOfFieldFocalDistance = 0.0;
+        post.DepthOfFieldScale = 0.0;
+        post.DepthOfFieldDepthBlurRadius = 0.0;
+    }
+    if !options.bloom {
+        post.BloomIntensity = 0.0;
+    }
+    if !options.film_grain {
+        post.FilmGrainIntensity = 0.0;
+    }
+    if !options.chromatic_aberration {
+        post.SceneFringeIntensity = 0.0;
+    }
+    if !options.vignette {
+        post.VignetteIntensity = 0.0;
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/post_processing.rs"]
+mod tests;

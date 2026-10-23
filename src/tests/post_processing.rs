@@ -1,16 +1,20 @@
-use super::ffi;
+use sdk::Engine::FPostProcessSettings;
+
+use super::apply;
 use crate::config::{Config, PostProcessing};
 
-// The dumped FPostProcessSettings is 0x760 bytes. Exercise the real C++ writes
-// through the bridge against aligned storage, checking every byte so a bad
-// field offset or an unintended neighbor write fails the test.
+// The dumped FPostProcessSettings is 0x760 bytes. Exercise the real writes
+// against aligned storage, checking every byte so a bad field offset or an
+// unintended neighbor write fails the test.
 #[repr(align(16))]
 struct Settings([u8; 0x760]);
+
+const _: () = assert!(size_of::<FPostProcessSettings>() == size_of::<Settings>());
 
 #[test]
 fn effect_switches_only_clear_their_own_fields() {
     for disabled in 0u8..64 {
-        let mut options = ffi::PostProcessOptions::from(PostProcessing::default());
+        let mut options = PostProcessing::default();
         options.motion_blur = disabled & 1 == 0;
         options.depth_of_field = disabled & 2 == 0;
         options.bloom = disabled & 4 == 0;
@@ -35,9 +39,10 @@ fn effect_switches_only_clear_their_own_fields() {
             }
         }
         for _ in 0..2 {
-            unsafe {
-                ffi::apply_post_processing(actual.0.as_mut_ptr() as usize, &options);
-            }
+            apply(
+                unsafe { &mut *actual.0.as_mut_ptr().cast::<FPostProcessSettings>() },
+                &options,
+            );
             assert_eq!(actual.0, expected, "disabled mask {disabled:#x}");
         }
     }

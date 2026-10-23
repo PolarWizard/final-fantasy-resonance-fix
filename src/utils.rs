@@ -1,6 +1,8 @@
+use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::fs::File;
 use std::path::Path;
+use std::sync::Mutex;
 
 use grapnel::{Context, MidHook};
 use windows::Win32::Foundation::{HMODULE, SYSTEMTIME};
@@ -66,14 +68,22 @@ pub fn init_logging(path: &str) {
         .apply();
 }
 
-/// Logs a correction's report, if it made one. The C++ side returns an empty
-/// string when a correction found nothing to change, or when its report repeats
-/// the last one under the same key, which keeps a callback that runs every
-/// frame from writing a line every frame.
-pub fn log_report(report: String) {
-    if !report.is_empty() {
-        log::info!("{report}");
+/// Logs a correction's report unless it repeats the last one logged under the
+/// same `key`, so a correction that runs every frame logs when it changes
+/// rather than per frame.
+pub fn log_report(key: &str, text: String) {
+    static PREVIOUS: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
+    let Ok(mut previous) = PREVIOUS.lock() else {
+        return;
+    };
+    if previous.len() >= 128 {
+        previous.clear();
     }
+    if previous.get(key) == Some(&text) {
+        return;
+    }
+    log::info!("{text}");
+    previous.insert(key.to_owned(), text);
 }
 
 /// A scanned/patched module: its base address plus everything worth logging

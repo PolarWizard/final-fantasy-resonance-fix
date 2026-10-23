@@ -10,9 +10,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 grapnel = "=0.1.2"
-cxx = "1.0.201"
+sdk = { path = "5.6.1-0+UE5-FFRS/RustSDK" }
 serde = { version = "1", features = ["derive"] }
-toml = "1.1.6"
+toml = "1.1.8"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_System_LibraryLoader",
@@ -24,6 +24,3 @@ windows = { version = "0.62", features = [
 ] }
 log = "0.4.34"
 fern = "0.7.1"
-
-[build-dependencies]
-cxx-build = "1.0.201"
