@@ -49,10 +49,14 @@ thread_local! {
 /// Fits a playing movie to 16:9 from the native callbacks that own its image:
 /// the movie screen's frame update and texture assignment, and the point where
 /// creating a movie screen completes.
+///
+/// The Projector field at +0x368, which `on_native_movie` reads through the
+/// SDK, stays literal in the first two, as does the RBX the completion hook
+/// reads; frame sizes, branches and moved-through registers are wildcarded.
 pub(super) fn install(module: &ModuleInfo) {
     let frame = SignatureHook {
         tag: "MovieScreen::OnFrame",
-        signature: "40 53 48 83 EC 20 48 8B 99 68 03 00 00 48 8B 8B 68 03 00 00 E8 ?? ?? ?? ?? 48 85 C0 74 45",
+        signature: "40 53 48 83 EC ?? 48 8B 99 68 03 00 00 48 8B 8B 68 03 00 00 E8 ?? ?? ?? ?? 48 85 C0 74 ??",
         offset: 0,
     };
     inject_hook(module, &frame, |ctx| {
@@ -60,7 +64,7 @@ pub(super) fn install(module: &ModuleInfo) {
     });
     let texture = SignatureHook {
         tag: "MovieProjector::SetManaTexture",
-        signature: "48 89 5C 24 10 57 48 83 EC 20 48 8B D9 48 8B FA 48 8B 89 68 03 00 00 E8 ?? ?? ?? ??",
+        signature: "48 89 5C 24 10 57 48 83 EC ?? 48 8B ?? 48 8B ?? 48 8B 89 68 03 00 00 E8 ?? ?? ?? ??",
         offset: 0,
     };
     inject_hook(module, &texture, |ctx| {
@@ -72,7 +76,7 @@ pub(super) fn install(module: &ModuleInfo) {
     });
     let created = SignatureHook {
         tag: "CreateMovieScreen completion",
-        signature: "33 D2 48 89 5F 30 48 8B CB E8 ?? ?? ?? ?? 48 8B 47 30 48 83 C4 20 5F 5E 5B C3",
+        signature: "33 D2 48 89 5F ?? 48 8B CB E8 ?? ?? ?? ?? 48 8B 47 ?? 48 83 C4 ?? 5F 5E 5B C3",
         offset: 14,
     };
     inject_hook(module, &created, |ctx| {
@@ -85,10 +89,11 @@ pub(super) fn install(module: &ModuleInfo) {
     // A battle sequence dispatches its authored events through one native
     // function, tagged by the EventType byte at the head of the parameter
     // struct. The signature is that dispatch reading the tag and bounding it
-    // against the last event type, which is unique image-wide with no
-    // wildcards: MOVZX EAX,byte ptr [R8]; DEC EAX; CMP EAX,0x7A. Hooking the
-    // read rather than the function entry keeps the anchor adjacent to the
-    // field that is read, and R8 still holds the struct there.
+    // against the last event type: MOVZX EAX,byte ptr [R8]; DEC EAX;
+    // CMP EAX,0x7A. The bound stays literal: wildcarded, it also matches a
+    // nine-case dispatch with the same read. Hooking the read rather than the
+    // function entry keeps the anchor adjacent to the field that is read, and
+    // R8 still holds the struct there.
     let sequence = SignatureHook {
         tag: "Battle sequence event",
         signature: "41 0F B6 00 FF C8 83 F8 7A 0F 87 ?? ?? ?? ??",

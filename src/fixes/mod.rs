@@ -58,10 +58,11 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
     // -- Translation at +0x90, Scale at +0xA0 -- are both consumed immediately
     // after entry, so a movie's scale and a tooltip's translation are written
     // here in place rather than through a setter that would recurse into it.
+    // The frame size and stack offsets are wildcarded.
     if movies || hud {
         let transform = SignatureHook {
             tag: "Widget render transform",
-            signature: "48 8B C4 48 89 58 18 48 89 78 20 55 48 8D 68 A1 48 81 EC F0 00 00 00 48 8D 55 B7 48 89 70 10 48 8B D9 E8 ?? ?? ?? ??",
+            signature: "48 8B C4 48 89 58 18 48 89 78 20 55 48 8D 68 ?? 48 81 EC ?? ?? ?? ?? 48 8D 55 ?? 48 89 70 10 48 8B D9 E8 ?? ?? ?? ??",
             offset: 0,
         };
         inject_hook(module, &transform, move |ctx| unsafe {
@@ -79,9 +80,11 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
         });
     }
     // Native UWidget::SetVisibility: RCX is the widget, DL the new visibility.
+    // The read and write of Visibility at +0xDC stay literal; the frame size,
+    // the registers they go through and the branch are wildcarded.
     let visibility = SignatureHook {
         tag: "Widget visibility change",
-        signature: "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 70 0F B6 B1 DC 00 00 00 48 8B D9 0F B6 FA 40 3A F7 74 07 40 88 B9 DC 00 00 00",
+        signature: "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC ?? 0F B6 ?? DC 00 00 00 48 8B ?? 0F B6 ?? ?? 3A ?? 74 ?? ?? 88 ?? DC 00 00 00",
         offset: 0,
     };
     let visibility_ready = (movies || hud)
@@ -102,10 +105,15 @@ fn hook_shared_widget_updates(module: &ModuleInfo, config: &Config) {
     let wrap_movies = movies && visibility_ready;
     if wrap_movies || hud {
         // Native UUserWidget rebuild, at the point RBX holds the widget and
-        // before its tree root is consumed for the Slate rebuild.
+        // before its tree root is consumed for the Slate rebuild. The
+        // signature runs from the entry to the hook, so every byte before the
+        // hook point is checked: MOV RBX,RCX, which puts the widget in RBX,
+        // and the LEA RCX,[RBX+...] the hook lands on stay literal, while
+        // frame sizes, stack slots, field offsets and the vtable slot are
+        // wildcarded.
         let rebuild = SignatureHook {
             tag: "User widget rebuild",
-            signature: "40 55 53 56 41 57 48 8D AC 24 98 FE FF FF 48 81 EC 68 02 00 00 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 58 01 00 00",
+            signature: "40 55 53 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? C7 44 24 ?? 00 00 00 00 4C 8B FA F6 81 ?? ?? ?? ?? ?? 48 8B D9 48 89 BC 24 ?? ?? ?? ?? 75 ?? 48 8B 01 FF 90 ?? ?? ?? ?? 48 8D 8B",
             offset: 0x4E,
         };
         inject_hook(module, &rebuild, move |ctx| unsafe {

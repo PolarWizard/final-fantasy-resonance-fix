@@ -19,12 +19,13 @@
 //! Both wrappers must be hooked to cover these two ways of loading a face.
 //! The signature comments in [`install`] describe the distinguishing bytes.
 //!
-//! Each AOB (array-of-bytes) signature matched once in the inspected executable.
+//! The memory wrapper's AOB (array-of-bytes) signature matches once; the stream
+//! wrapper is the wrapper of its shape that calls the same internal loader.
 //! RVAs below record that investigation; runtime addresses come from signature
-//! scans and decoded relative calls. Wildcards cover branch/call displacements,
-//! not arbitrary changes to instructions or ABI. This evidence identifies the
-//! hook sites; it does not establish in-game rendering quality or coverage of
-//! faces that were already cached before installation.
+//! scans and decoded relative calls. Wildcards cover stack offsets and
+//! branch/call displacements, not changes to instructions or ABI. This evidence
+//! identifies the hook sites; it does not establish in-game rendering quality or
+//! coverage of faces that were already cached before installation.
 
 use std::{
     cell::Cell,
@@ -41,7 +42,7 @@ use grapnel::Context;
 
 use crate::{
     config::Fonts,
-    utils::{ModuleInfo, SignatureHook, inject_hook, pattern_scan},
+    utils::{ModuleInfo, inject_hook_at, pattern_scan, pattern_scan_all},
 };
 
 // FreeType's public FT_Open_Args ABI on Windows x64. FT_Long is 32 bits here.
@@ -235,48 +236,35 @@ fn finish(ctx: &mut Context, replacement: &Replacement, original: OpenFace) {
     }
 }
 
-/// Installs the argument/result hooks around one native five-byte E8 CALL.
-///
-/// `argument_hook.offset` must select that CALL within the matched signature.
-/// Decode its signed rel32 operand as `call + 5 + displacement` to obtain the
-/// callable fallback loader. This preliminary scan is needed because the shared
-/// [`inject_hook`] reports installation success, not the matched address.
+/// The target of the five-byte E8 CALL at `call`: its signed rel32 operand
+/// decoded as `call + 5 + displacement`.
+fn call_target(call: usize) -> usize {
+    let displacement = unsafe { ((call + 1) as *const i32).read_unaligned() };
+    (call + 5).wrapping_add_signed(displacement as isize)
+}
+
+/// Installs the argument/result hooks around the native E8 CALL at `call`,
+/// found by signature, whose target is the callable fallback loader.
 ///
 /// The result hook sits at CALL+5 and must install before argument substitution
-/// is allowed. The signature ends with the CALL operand, so patching the result
-/// site leaves it available for the input hook's scan. Both hooks use the shared
-/// installer; captured Arcs retain the buffer even if only one hook installs.
+/// is allowed. Captured Arcs retain the buffer even if only one hook installs.
 fn install_pair(
     module: &ModuleInfo,
     replacement: Arc<Replacement>,
-    argument_hook: &SignatureHook,
-    result_tag: &'static str,
+    call: usize,
+    tags: [&str; 2],
 ) -> bool {
-    let Some(address) = pattern_scan(module.address, argument_hook.signature) else {
-        log::error!("{}: signature not found", argument_hook.tag);
-        return false;
-    };
-    // Decode the matched CALL rel32, not a module RVA or external SDK address.
-    let call = address + argument_hook.offset;
-    let displacement = unsafe { ((call + 1) as *const i32).read_unaligned() };
-    let target = (call + 5).wrapping_add_signed(displacement as isize);
-    let original: OpenFace = unsafe { std::mem::transmute(target) };
-    let result_hook = SignatureHook {
-        tag: result_tag,
-        signature: argument_hook.signature,
-        offset: argument_hook.offset + 5,
-    };
+    let original: OpenFace = unsafe { std::mem::transmute(call_target(call)) };
+    let offset = call - module.address.0 as usize;
     let result_data = Arc::clone(&replacement);
-    // Both signatures stop at the internal CALL. Installing the return hook
-    // first leaves the signature intact for the argument hook's scan.
-    if !inject_hook(module, &result_hook, move |ctx| {
+    if !inject_hook_at(module, tags[1], offset + 5, move |ctx| {
         finish(ctx, &result_data, original);
     }) {
         return false;
     }
     // Shared MidHooks live until process exit, retaining this Arc and its font
     // buffer even after install() returns or another path fails to install.
-    inject_hook(module, argument_hook, move |ctx| {
+    inject_hook_at(module, tags[0], offset, move |ctx| {
         begin(ctx, &replacement);
     })
 }
@@ -333,42 +321,51 @@ pub(super) fn install(module: &ModuleInfo, config: &Fonts) {
     log::info!("Fonts: loaded {} ({} bytes)", path.display(), bytes.len());
     let replacement = Arc::new(Replacement::new(bytes));
     // FT_New_Memory_Face: discovered by its `test rdx, rdx`, null-input error
-    // `mov eax, 6`, and stack-built FT_Open_Args. The signature includes the
-    // buffer at [rsp+0x38], size at [rsp+0x40], flags=1 at [rsp+0x30], and
-    // null stream at [rsp+0x50]. Slate's call at RVA 0x1691502 supplies these
-    // memory inputs, confirming this is a font-loading path.
+    // `mov eax, 6`, and stack-built FT_Open_Args. The signature keeps the
+    // stores that build them -- buffer, size, flags=1 (FT_OPEN_MEMORY), null
+    // stream -- with their stack offsets wildcarded. Slate's call at RVA
+    // 0x1691632 supplies these memory inputs, confirming this is a
+    // font-loading path.
     //
-    // The anchor was RVA 0x6DC8EE0; +0x46 selects its E8 internal CALL after
-    // the wrapper has rearranged arguments into the common OpenFace ABI.
-    // The result hook is +0x4B. Wildcard the conditional-branch displacement
-    // and CALL target while retaining the argument-building instructions.
-    let memory_input = SignatureHook {
-        tag: "Font memory input",
-        signature: "48 83 EC 78 41 8B C1 48 85 D2 75 ?? B8 06 00 00 00 48 83 C4 78 C3 4C 8B 8C 24 A0 00 00 00 48 89 54 24 38 48 8D 54 24 30 44 89 44 24 40 44 8B C0 C7 44 24 30 01 00 00 00 48 C7 44 24 50 00 00 00 00 C6 44 24 20 01 E8 ?? ?? ?? ??",
-        offset: 0x46,
+    // The wrapper is at RVA 0x6DD5CE0; +0x46 is its E8 internal CALL, made
+    // after the wrapper has rearranged arguments into the common OpenFace ABI,
+    // and the result hook goes on the instruction after it.
+    const MEMORY: &str = "48 83 EC ?? 41 8B C1 48 85 D2 75 ?? B8 06 00 00 00 48 83 C4 ?? C3 4C 8B 8C 24 ?? ?? ?? ?? 48 89 54 24 ?? 48 8D 54 24 ?? 44 89 44 24 ?? 44 8B C0 C7 44 24 ?? 01 00 00 00 48 C7 44 24 ?? 00 00 00 00 C6 44 24 20 01 E8 ?? ?? ?? ??";
+    let Some(memory_wrapper) = pattern_scan(module.address, MEMORY) else {
+        log::error!("Fonts: memory wrapper signature not found");
+        return;
     };
+    let memory_call = memory_wrapper + 0x46;
+    // FT_Open_Face: Slate's calls at RVA 0x1680203 and 0x6E0B3BD pass flags=2
+    // and a stream. This wrapper (RVA 0x6DD5F00) only reserves stack, sets
+    // test_mac=1 at [rsp+0x20] and calls the internal loader (RVA 0x6DDBE90).
+    // Another wrapper of exactly that shape exists (RVA 0x215EE90), so of
+    // every match the one calling the same loader as the memory wrapper is
+    // taken; +9 is its CALL.
+    const STREAM: &str = "48 83 EC ?? C6 44 24 20 01 E8 ?? ?? ?? ?? 48 83 C4 ?? C3";
+    let loader = call_target(memory_call);
+    let stream_call = pattern_scan_all(module.address, STREAM)
+        .into_iter()
+        .map(|wrapper| wrapper + 9)
+        .find(|&call| call_target(call) == loader);
     let memory = install_pair(
         module,
         Arc::clone(&replacement),
-        &memory_input,
-        "Font memory result",
+        memory_call,
+        ["Font memory input", "Font memory result"],
     );
-    // FT_Open_Face: Slate's call at RVA 0x16800D3 passes flags=2 and a stream.
-    // This wrapper reserves 0x38 stack bytes, sets test_mac=1 at [rsp+0x20],
-    // and forwards to the same internal loader as the memory wrapper (observed
-    // target RVA 0x6DCF090). Its short body alone also matched an unrelated
-    // wrapper at 0x215ECA0. Including the preceding function's two stores,
-    // wildcarded JMP, and six CC padding bytes made the signature unique.
-    //
-    // The expanded anchor was RVA 0x6DC90EE, 0x12 bytes before the wrapper
-    // entry at 0x6DC9100. Thus +0x1B selects the CALL and +0x20 its return
-    // site. Wildcard JMP/CALL displacements; retain the surrounding structure.
-    let stream_input = SignatureHook {
-        tag: "Font stream input",
-        signature: "49 89 3E 49 89 7E 08 E9 ?? ?? ?? ?? CC CC CC CC CC CC 48 83 EC 38 C6 44 24 20 01 E8 ?? ?? ?? ??",
-        offset: 0x1B,
+    let stream = match stream_call {
+        Some(call) => install_pair(
+            module,
+            replacement,
+            call,
+            ["Font stream input", "Font stream result"],
+        ),
+        None => {
+            log::error!("Fonts: stream wrapper not found");
+            false
+        }
     };
-    let stream = install_pair(module, replacement, &stream_input, "Font stream result");
     if !memory || !stream {
         log::warn!("Fonts: incomplete hook coverage (memory={memory}, stream={stream})");
     }

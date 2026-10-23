@@ -257,14 +257,14 @@ pub fn pattern_scan_all(module: HMODULE, signature: &str) -> Vec<usize> {
     hits
 }
 
-/// Installs a mid-function hook permanently at a fixed `offset` from
-/// `module`'s base, bypassing signature scanning.
+/// Installs a mid-function hook permanently at `offset` from `module`'s base,
+/// bypassing signature scanning.
 ///
-/// Useful for investigations that need to probe an address before it is worth
-/// a signature at all. No shipped fix should call this: an absolute offset
-/// moves whenever a game update shifts the code around it, so a confirmed hook
-/// is converted to a signature before it ships. Kept, and deliberately not
-/// removed as dead code, for the next investigation.
+/// A shipped fix only passes an offset derived from a signature match, as the
+/// font hooks do for the CALL inside a matched wrapper. A hardcoded offset is
+/// for probing an address before it is worth a signature at all: it moves
+/// whenever a game update shifts the code around it, so a confirmed hook is
+/// converted to a signature before it ships.
 pub fn inject_hook_at<F>(module: &ModuleInfo, tag: &str, offset: usize, callback: F) -> bool
 where
     F: FnMut(&mut Context) + Send + 'static,

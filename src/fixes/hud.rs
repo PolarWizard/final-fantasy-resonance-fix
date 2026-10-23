@@ -53,10 +53,16 @@ thread_local! {
 /// attachment to the viewport, the native slot update, and the inlined commit
 /// inside the reflected setter, which loads the local slot's anchors just after
 /// the hook point and so cannot be corrected at the setter's entry.
+///
+/// The two entry hooks wildcard frame sizes, stack offsets and registers the
+/// body only moves values through; the arguments they read arrive in the
+/// calling convention's registers either way. The attachment's prologue alone
+/// is common, so its signature continues through the moves that park its
+/// arguments.
 pub(super) fn install(module: &ModuleInfo, aspect: f64) {
     let attach = SignatureHook {
         tag: "HUD viewport attachment",
-        signature: "40 55 56 57 41 54 41 56 48 8D AC 24 60 FC FF FF 48 81 EC A0 04 00 00 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 60 03 00 00",
+        signature: "40 55 56 57 41 54 41 56 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? 4C 89 44 24 ?? 4D 8B F1 48 89 4D ?? 4C 8B E2",
         offset: 0,
     };
     inject_hook(module, &attach, move |ctx| unsafe {
@@ -64,15 +70,17 @@ pub(super) fn install(module: &ModuleInfo, aspect: f64) {
     });
     let native = SignatureHook {
         tag: "HUD native slot update",
-        signature: "48 85 D2 0F 84 ?? ?? ?? ?? 55 53 56 57 48 8D 6C 24 C1 48 81 EC D8 00 00 00 8B 42 08 49 8B F8 C1 E8 0F 48 8B DA 48 8B F1",
+        signature: "48 85 D2 0F 84 ?? ?? ?? ?? 55 53 56 57 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 8B 42 08 49 8B ?? C1 E8 0F 48 8B ?? 48 8B ??",
         offset: 0,
     };
     inject_hook(module, &native, move |ctx| unsafe {
         constrain_hud_slot(ctx.rdx as *mut UObject, ctx.r8 as *mut _, 1, aspect);
     });
+    // RSI and the local slot at RBP-0x70 are what the hook reads, so the
+    // instructions naming them stay literal.
     let reflected = SignatureHook {
         tag: "HUD reflected slot commit",
-        signature: "80 8E D9 00 00 00 20 48 8B F8 0F 28 45 90 0F 28 4D A0 0F 11 00 0F 28 45 B0 0F 11 48 10",
+        signature: "80 8E D9 00 00 00 20 48 8B ?? 0F 28 45 90 0F 28 4D A0 0F 11 00 0F 28 45 B0 0F 11 48 10",
         offset: 10,
     };
     inject_hook(module, &reflected, move |ctx| unsafe {

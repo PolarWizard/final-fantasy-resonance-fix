@@ -24,9 +24,10 @@ pub(super) fn apply(module: &ModuleInfo) {
     // manager, which pauses on the first request (SetGamePaused(true),
     // Delegate.Game.Pause). The JZ at +0 becomes a JMP, so focus changes never
     // request a pause while every other requester (menus, events) still does.
-    // The inversion, key load and call are unique image-wide; the jump, key and
-    // call displacements are wildcarded.
-    const GAME: &str = "74 ?? 40 80 F7 01 4C 8D 05 ?? ?? ?? ?? 40 0F B6 D7 48 8B CB E8";
+    // The inversion, key load and call are unique image-wide; the
+    // displacements and the registers the flag and object pass through are
+    // wildcarded, while R8, the key argument, stays literal.
+    const GAME: &str = "74 ?? ?? 80 ?? 01 4C 8D 05 ?? ?? ?? ?? ?? 0F B6 ?? 48 8B ?? E8";
     if let Some(address) = pattern_scan(module.address, GAME) {
         patch(address, "EB");
         log::info!(
@@ -41,9 +42,9 @@ pub(super) fn apply(module: &ModuleInfo) {
     // idle flag, CMP [RAX],R13D tests the cached t.IdleWhenNotForeground value
     // against zero, then CALL FApp::HasFocus; TEST AL,AL; JNZ. The JZ at +6 is
     // the setting-off exit; as a JMP it is always taken, so SIL stays clear and
-    // the loop neither sleeps 0.1s nor skips the frame. Its displacement and
-    // the call target are code-relative and wildcarded.
-    const IDLE: &str = "40 32 F6 44 39 28 74 ?? E8 ?? ?? ?? ?? 84 C0 75";
+    // the loop neither sleeps 0.1s nor skips the frame. The registers and both
+    // displacements are wildcarded; TEST AL,AL reads HasFocus's return.
+    const IDLE: &str = "?? 32 ?? ?? 39 ?? 74 ?? E8 ?? ?? ?? ?? 84 C0 75";
     if let Some(address) = pattern_scan(module.address, IDLE) {
         patch(address + 6, "EB");
         log::info!(
@@ -58,8 +59,8 @@ pub(super) fn apply(module: &ModuleInfo) {
     // bPauseOnLossOfFocus, bit 0 of the byte at 0xD7C in the SDK's UEngine --
     // and returns without pausing anyone when it is clear. Its immediate at +6
     // becomes 0, so the flag never survives the test. It is the only test of
-    // that byte image-wide.
-    const PAUSE: &str = "F6 81 7C 0D 00 00 01";
+    // that byte image-wide, whichever register holds the engine.
+    const PAUSE: &str = "F6 ?? 7C 0D 00 00 01";
     if let Some(address) = pattern_scan(module.address, PAUSE) {
         patch(address + 6, "00");
         log::info!(

@@ -35,14 +35,15 @@ thread_local! {
 /// handed, and that a fresh frame is on its way into it.
 ///
 /// The whole function is two writes -- the target at +0x28 and the request word
-/// at +0x30 -- and the signature matches them, unique image-wide with no
-/// wildcards. Nothing is written to the game from here: the copy the request
-/// raises is deferred, so the frame is re-framed afterwards, from the widget
-/// that draws it.
+/// 0x0100 at +0x30 -- and the signature matches their shape, unique image-wide
+/// with the field offsets, registers and branch wildcarded and the request
+/// value literal. Nothing is written to the game from here: the copy the
+/// request raises is deferred, so the frame is re-framed afterwards, from the
+/// widget that draws it.
 pub(super) fn install(module: &ModuleInfo) {
     let capture = SignatureHook {
         tag: "Back buffer capture",
-        signature: "48 8B 41 30 48 85 C0 74 0A 48 89 50 28 66 C7 40 30 00 01 C3",
+        signature: "48 8B ?? ?? 48 85 C0 74 ?? 48 89 ?? ?? 66 C7 ?? ?? 00 01 C3",
         offset: 0,
     };
     inject_hook(module, &capture, |ctx| {

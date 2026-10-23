@@ -30,10 +30,12 @@ pub(super) fn install(module: &ModuleInfo, config: PostProcessing) {
     // Native evidence: LEA RDX,[RBX+0x1320] passes the settings to the view
     // extension, and the motion-blur override writes [RBX+0x19F0], matching
     // the SDK's MotionBlurAmount at settings+0x6D0. The hook runs after that
-    // override and the optional final adjustment call. See DEVELOPMENT_LOG.
+    // override and the optional final adjustment call. MOV RCX,RBX and the
+    // restore of RBX stay literal; the epilogue's stack offsets and the branch
+    // are wildcarded.
     let hook = SignatureHook {
         tag: "Final post processing",
-        signature: "E8 ?? ?? ?? ?? 84 C0 74 08 48 8B CB E8 ?? ?? ?? ?? 48 8B 5C 24 60 48 8B 6C 24 68 48 8B 74 24 70 48 8B 7C 24 78 0F 28 74 24 30 48 83 C4 40 41 5F 41 5E 41 5C C3",
+        signature: "E8 ?? ?? ?? ?? 84 C0 74 ?? 48 8B CB E8 ?? ?? ?? ?? 48 8B 5C 24 ?? 48 8B 6C 24 ?? 48 8B 74 24 ?? 48 8B 7C 24 ?? 0F 28 74 24 ?? 48 83 C4 ?? 41 5F 41 5E 41 5C C3",
         offset: 17,
     };
     let reported = AtomicBool::new(false);
