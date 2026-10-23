@@ -16,7 +16,7 @@ use sdk::{
         USlateBlueprintLibrary, UUserWidget, UWidget, UWidgetTree,
     },
     WBP_OverAllLayout::UWBP_OverAllLayout_C,
-    mucha::UCPP_WBP_Tooltip,
+    mucha::{UCPP_WBP_TalkEvent, UCPP_WBP_Tooltip},
     rt::NameCache,
 };
 
@@ -113,12 +113,24 @@ unsafe fn constrain_hud_slot(
     // Blueprint class is loaded on demand, so it is recognised by the name the
     // live class carries.
     static ENCOUNTER: NameCache = NameCache::new("WBP_EncountLayout_C");
+    // The chapter title an in-engine cutscene opens with arrives here as a
+    // viewport root of its own, WBP_ChapterBegin_C, rather than as a screen
+    // inside the overall layout, so it is held to the HUD's rectangle
+    // separately. It is loaded on demand like the encounter layout.
+    static CHAPTER_TITLE: NameCache = NameCache::new("WBP_ChapterBegin_C");
     let class = unsafe { &*(*widget).Class };
     let aspect = if class.Name == ENCOUNTER.get() {
         encounter::captured_aspect()
-    } else if ptr::eq(class, UWBP_OverAllLayout_C::StaticClass()) {
+    } else if ptr::eq(class, UWBP_OverAllLayout_C::StaticClass())
+        || class.Name == CHAPTER_TITLE.get()
+    {
         aspect
     } else {
+        let name = class.GetName();
+        log_report(
+            &format!("viewport_root:{name}"),
+            format!("Viewport root left unconstrained: {name}"),
+        );
         return;
     };
     let viewport = viewport_local_size(widget);
@@ -294,8 +306,11 @@ pub(super) unsafe fn on_transform(widget: *mut UWidget, aspect: f64) {
     );
 }
 
-// A top-level screen is owned by the overall layout's widget tree. Nested
-// controls have another UserWidget owner and must keep their authored bounds.
+// A top-level screen is owned by the overall layout's widget tree, or by a
+// talk event's: UCPP_WBP_TalkEvent carries its own WidgetStack and dialog
+// classes, so a dialog an in-engine cutscene opens is created in the talk
+// event's tree and laid out across it. Nested controls have another
+// UserWidget owner and must keep their authored bounds.
 fn top_level_screen(screen: *mut UUserWidget) -> bool {
     let tree = unsafe { &*screen }.Outer;
     unsafe {
@@ -304,7 +319,9 @@ fn top_level_screen(screen: *mut UUserWidget) -> bool {
         } else {
             null_mut()
         };
-        live(owner) && (*owner).Class == UWBP_OverAllLayout_C::StaticClass()
+        live(owner)
+            && ((*owner).Class == UWBP_OverAllLayout_C::StaticClass()
+                || (*owner).IsA(UCPP_WBP_TalkEvent::StaticClass()))
     }
 }
 
