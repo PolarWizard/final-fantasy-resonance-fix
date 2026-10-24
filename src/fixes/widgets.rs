@@ -9,7 +9,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
+    collections::HashMap,
     ptr::null_mut,
     thread::LocalKey,
 };
@@ -22,7 +22,7 @@ use sdk::{
         ESlateVisibility, UImage, UOverlay, USlateBlueprintLibrary, UUserWidget, UWidget,
         UWidgetLayoutLibrary, UWidgetTree,
     },
-    rt::{EObjectFlags, TSubclassOf, UClassType},
+    rt::{EObjectFlags, FName, TSubclassOf, UClassType},
 };
 
 use super::layout::{Scale, full_bleed_scale};
@@ -33,11 +33,10 @@ thread_local! {
     /// local units.
     static MEASURED_VIEWPORT: Cell<FVector2D> = const { Cell::new(FVector2D { X: 0.0, Y: 0.0 }) };
 
-    /// Object indices of every backdrop [`spawn_backdrop_image`] made. An index
-    /// a collected object left behind can be reused, which at worst leaves one
-    /// authored background unstretched -- the safe direction for a widget this
-    /// mod may not own.
-    static SPAWNED_BACKDROPS: RefCell<HashSet<i32>> = RefCell::new(HashSet::new());
+    /// Object index and name of every backdrop [`spawn_backdrop_image`] made.
+    /// An index a collected backdrop left behind can be reused by an authored
+    /// image, which must not be mistaken for ours, and the name tells them apart.
+    static SPAWNED_BACKDROPS: RefCell<HashMap<i32, FName>> = RefCell::new(HashMap::new());
 }
 
 /// Whether an object is safe to read and safe to write to.
@@ -283,7 +282,7 @@ pub fn spawn_backdrop_image(tree: *mut UWidgetTree) -> *mut UImage {
         A: 1.0,
     });
     image.SetVisibility(ESlateVisibility::HitTestInvisible);
-    SPAWNED_BACKDROPS.with_borrow_mut(|spawned| spawned.insert(image.Index));
+    SPAWNED_BACKDROPS.with_borrow_mut(|spawned| spawned.insert(image.Index, image.Name));
     black
 }
 
@@ -295,8 +294,8 @@ pub fn spawn_backdrop_image(tree: *mut UWidgetTree) -> *mut UImage {
 /// than writing a render scale to a widget it does not control.
 pub fn is_mod_backdrop(widget: *const UWidget) -> bool {
     !widget.is_null() && {
-        let index = unsafe { &*widget }.Index;
-        SPAWNED_BACKDROPS.with_borrow(|spawned| spawned.contains(&index))
+        let widget = unsafe { &*widget };
+        SPAWNED_BACKDROPS.with_borrow(|spawned| spawned.get(&widget.Index) == Some(&widget.Name))
     }
 }
 
