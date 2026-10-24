@@ -20,12 +20,12 @@ mod movies;
 mod post_processing;
 mod widgets;
 
-use std::ffi::c_void;
+use std::{ffi::c_void, time::Duration};
 
 use sdk::{
     CoreUObject::UObject,
     UMG::{ESlateVisibility, UWidget},
-    rt::FName,
+    rt::{FName, GetVirtualFunction},
 };
 
 use crate::{
@@ -43,7 +43,7 @@ pub fn install(module: &ModuleInfo, config: &Config) {
     post_processing::install(module, config.post_processing);
     // Everything below reads game objects or names through the SDK.
     if !resolve_sdk(module) {
-        log::error!("SDK: lookups not found, HUD, movie and encounter fixes stay off");
+        log::error!("SDK: not usable, HUD, movie and encounter fixes stay off");
         return;
     }
     if config.hud.enable {
@@ -63,7 +63,8 @@ pub fn install(module: &ModuleInfo, config: &Config) {
 /// Points the SDK at the object array and `FName::AppendString` found by
 /// signature, so object lookups, class checks and names work wherever the
 /// linker places them. Left alone, the SDK reads both at the dump's fixed RVAs.
-/// Returns false when either signature is missing.
+/// Then checks that its UFunction calls reach ProcessEvent (see
+/// [`process_event_in_slot`]). Returns false when any of this fails.
 fn resolve_sdk(module: &ModuleInfo) -> bool {
     // FName::AppendString(FString&): its prologue, then CMP byte ptr [rip+X],0;
     // MOV RSI,RDX (the output string); MOV EBX,[RCX] (the name's comparison
@@ -73,12 +74,22 @@ fn resolve_sdk(module: &ModuleInfo) -> bool {
     // RCX,[RAX+RCX*8]; LEA RAX,[RCX+RDX*8]. The idiom recurs about 300 times
     // and every copy loads the same chunk table, so the first match decodes it.
     const OBJECT_CHUNKS: &str = "48 8B 05 ?? ?? ?? ?? 48 8B 0C C8 48 8D 04 D1";
+    // UObject::ProcessEvent from its entry: the prologue, then the object's
+    // flags test (MOV EAX,[RCX+8]; SHR EAX,0x1E) and the function's native
+    // test (TEST dword ptr [RDX+0xB0],0x400 -- FunctionFlags at UFunction+0xB0,
+    // as in the SDK). Frame sizes, stack slots and registers values only pass
+    // through are wildcarded. One match image-wide.
+    const PROCESS_EVENT: &str = "40 55 56 57 41 54 41 55 41 56 41 57 48 81 EC ?? ?? ?? ?? 48 8D 6C 24 ?? 48 89 9D ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C5 48 89 85 ?? ?? ?? ?? 8B 41 08 ?? 8B ?? C1 E8 1E ?? 8B ?? F6 D0 ?? 8B ?? A8 01 0F 84 ?? ?? ?? ?? 33 F6 F7 82 B0 00 00 00 00 04 00 00";
     let Some(append_string) = pattern_scan(module.address, APPEND_STRING) else {
         log::error!("SDK: FName::AppendString signature not found");
         return false;
     };
     let Some(load) = pattern_scan(module.address, OBJECT_CHUNKS) else {
         log::error!("SDK: GObjects signature not found");
+        return false;
+    };
+    let Some(process_event) = pattern_scan(module.address, PROCESS_EVENT) else {
+        log::error!("SDK: ProcessEvent signature not found");
         return false;
     };
     let displacement = unsafe { ((load + 3) as *const i32).read_unaligned() };
@@ -90,13 +101,42 @@ fn resolve_sdk(module: &ModuleInfo) -> bool {
     UObject::GObjects.InitManually(objects as *mut c_void);
     let base = module.address.0 as usize;
     log::info!(
-        "SDK: AppendString +{:X} (dump +{:X}), GObjects +{:X} (dump +{:X})",
+        "SDK: AppendString +{:X} (dump +{:X}), GObjects +{:X} (dump +{:X}), ProcessEvent +{:X} (dump +{:X})",
         append_string - base,
         sdk::config::APPEND_STRING,
         objects - base,
-        sdk::config::GOBJECTS
+        sdk::config::GOBJECTS,
+        process_event - base,
+        sdk::config::PROCESS_EVENT
     );
-    true
+    process_event_in_slot(process_event)
+}
+
+/// Whether the SDK's UFunction calls reach `process_event`.
+///
+/// The SDK calls ProcessEvent through vtable slot `PROCESS_EVENT_INDEX` rather
+/// than an address, so the slot is what can go wrong. UClass does not override
+/// ProcessEvent, so the Object class's own vtable holds the base implementation
+/// there. The class registers early in engine start-up; until GObjects lists
+/// it, this waits, for up to 10 s.
+fn process_event_in_slot(process_event: usize) -> bool {
+    let index = sdk::config::PROCESS_EVENT_INDEX;
+    for _ in 0..100 {
+        let class = UObject::StaticClass();
+        if class.is_null() {
+            std::thread::sleep(Duration::from_millis(100));
+            continue;
+        }
+        let slot = unsafe { GetVirtualFunction(class.cast(), index) } as usize;
+        if slot == process_event {
+            log::info!("SDK: vtable slot {index:#X} holds ProcessEvent");
+        } else {
+            log::error!("SDK: vtable slot {index:#X} holds {slot:#X}, not ProcessEvent");
+        }
+        return slot == process_event;
+    }
+    log::error!("SDK: the Object class never appeared in GObjects");
+    false
 }
 
 /// Installs the native widget callbacks both fixes correct through, each
