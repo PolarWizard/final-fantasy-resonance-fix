@@ -20,7 +20,7 @@ use sdk::{
 use super::{
     layout::fit_16_9,
     widgets::{
-        BackdropWrapper, WrapGuard, apply_center_scale, approximately, arranged, describe,
+        BackdropWrapper, WrapGuard, apply_scale, approximately, arranged, describe,
         expand_backdrop, fill_overlay, layout_box, live, live_backdrop, mirrored_visibility, spawn,
         spawn_backdrop_image,
     },
@@ -308,7 +308,7 @@ fn on_native_movie(object: *mut UObject, is_screen: bool) {
         let fit = fit_16_9(layout.size.X, layout.size.Y);
         // GetFullName walks the outer chain building a string, so the key is
         // only built on a frame that actually refits.
-        if apply_center_scale(picture, fit) {
+        if apply_scale(picture, FVector2D::new(0.5, 0.5), fit) {
             let label = if is_screen {
                 "OnFrame"
             } else {

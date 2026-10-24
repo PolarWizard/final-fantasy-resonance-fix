@@ -10,10 +10,11 @@ use std::{
 
 use sdk::{
     CoreUObject::{FVector2D, UClass, UObject},
-    SlateCore::{EHorizontalAlignment, EVerticalAlignment, FMargin},
+    SlateCore::{EHorizontalAlignment, ESlateColorStylingMode, EVerticalAlignment, FMargin},
     UMG::{
-        ESlateVisibility, FGameViewportWidgetSlot, UImage, UOverlay, UOverlaySlot, UPanelWidget,
-        USlateBlueprintLibrary, UUserWidget, UWidget, UWidgetTree,
+        ESlateVisibility, FGameViewportWidgetSlot, UImage, UOverlay, UOverlaySlot, UPanelSlot,
+        UPanelWidget, USlateBlueprintLibrary, UUserWidget, UWidget, UWidgetSwitcher,
+        UWidgetSwitcherSlot, UWidgetTree,
     },
     WBP_OverAllLayout::UWBP_OverAllLayout_C,
     mucha::{UCPP_WBP_TalkEvent, UCPP_WBP_Tooltip},
@@ -22,10 +23,10 @@ use sdk::{
 
 use super::{
     encounter,
-    layout::{OffsetState, apply_offset, letterbox_inset},
+    layout::{OffsetState, Scale, apply_offset, letterbox_inset, side_bleed_scale},
     widgets::{
-        approximately, arranged, expand_backdrop, is_mod_backdrop, live, outward,
-        viewport_local_size,
+        apply_scale, approximately, arranged, describe, expand_backdrop, is_mod_backdrop,
+        layout_box, live, outward, viewport_local_size,
     },
 };
 use crate::utils::{ModuleInfo, SignatureHook, inject_hook, log_report};
@@ -342,68 +343,128 @@ fn unpositioned(widget: *mut UWidget) -> bool {
         && approximately(transform.Shear.Y, 0.0)
 }
 
-// Follow only the full-fill, backmost branch. Crossing a UserWidget's tree
-// lets reusable background components satisfy exactly the same rules as an
-// image embedded directly in the screen. Always scale the leaf image, never
-// a container that could also carry menu controls.
-fn background_image(mut node: *mut UWidget) -> *mut UWidget {
-    for _ in 0..32 {
-        if !live(node) || !unpositioned(node) {
-            return null_mut();
-        }
-        unsafe {
-            if (*node).IsA(UImage::StaticClass()) {
-                // UImage draws both flat dimming and artwork. Only resource-free
-                // brushes are solid fills; textures, materials (including dynamic
-                // instances), and named/dynamically loaded images stay authored.
-                let brush = &(*node.cast::<UImage>()).Brush;
-                let solid = brush.ResourceObject.is_null()
-                    && brush.ResourceName.IsNone()
-                    && !brush.bIsDynamicallyLoaded();
-                return if solid { node } else { null_mut() };
-            }
-            if (*node).IsA(UUserWidget::StaticClass()) {
-                let tree = (*node.cast::<UUserWidget>()).WidgetTree;
-                node = if live(tree) {
-                    (*tree).RootWidget
-                } else {
-                    null_mut()
-                };
-                continue;
-            }
-            if !(*node).IsA(UOverlay::StaticClass()) {
-                return null_mut();
-            }
-            let Some(&first) = (*node.cast::<UPanelWidget>()).Slots.as_slice().first() else {
-                return null_mut();
-            };
-            if !live(first) || !(*first).IsA(UOverlaySlot::StaticClass()) {
-                return null_mut();
-            }
-            let slot = &*first.cast::<UOverlaySlot>();
-            let padding = slot.Padding;
-            if slot.HorizontalAlignment != EHorizontalAlignment::HAlign_Fill
-                || slot.VerticalAlignment != EVerticalAlignment::VAlign_Fill
-                || [padding.Left, padding.Right, padding.Top, padding.Bottom]
-                    .iter()
-                    .any(|&side| !approximately(f64::from(side), 0.0))
-            {
-                return null_mut();
-            }
-            node = slot.Content;
-        }
+// The horizontal alignment a slot gives its content when that content fills
+// the parent's height with no padding, for the two slot kinds a screen's
+// background passes through: an overlay layer and a switcher page.
+fn full_height_alignment(slot: *mut UPanelSlot) -> Option<EHorizontalAlignment> {
+    if !live(slot) {
+        return None;
     }
-    null_mut()
+    let (padding, horizontal, vertical) = unsafe {
+        if (*slot).IsA(UOverlaySlot::StaticClass()) {
+            let slot = &*slot.cast::<UOverlaySlot>();
+            (
+                slot.Padding,
+                slot.HorizontalAlignment,
+                slot.VerticalAlignment,
+            )
+        } else if (*slot).IsA(UWidgetSwitcherSlot::StaticClass()) {
+            let slot = &*slot.cast::<UWidgetSwitcherSlot>();
+            (
+                slot.Padding,
+                slot.HorizontalAlignment,
+                slot.VerticalAlignment,
+            )
+        } else {
+            return None;
+        }
+    };
+    let unpadded = [padding.Left, padding.Right, padding.Top, padding.Bottom]
+        .iter()
+        .all(|&side| approximately(f64::from(side), 0.0));
+    (unpadded && vertical == EVerticalAlignment::VAlign_Fill).then_some(horizontal)
 }
 
-fn embedded_menu_backdrop(widget: *mut UWidget) -> *mut UWidget {
+// UImage draws both shades and artwork. A resource-free brush is a flat fill,
+// and one drawn near black is a shade whatever texture shapes it -- artwork
+// drawn that way would show nothing of itself. Textures, materials (including
+// dynamic instances) and named or dynamically loaded images drawn in colour
+// stay authored.
+fn shade(image: &UImage) -> bool {
+    let brush = &image.Brush;
+    let solid = brush.ResourceObject.is_null()
+        && brush.ResourceName.IsNone()
+        && !brush.bIsDynamicallyLoaded();
+    let (tint, color) = (&brush.TintColor.SpecifiedColor, &image.ColorAndOpacity);
+    let dark = brush.TintColor.ColorUseRule == ESlateColorStylingMode::UseColor_Specified
+        && [tint.R * color.R, tint.G * color.G, tint.B * color.B]
+            .iter()
+            .all(|&channel| channel <= 0.05);
+    solid || dark
+}
+
+/// A shade behind a screen's controls, and the alignment its slot gives it:
+/// fill for one across the whole box, left or right for one pinned to a side.
+type Shade = (*mut UImage, EHorizontalAlignment);
+
+// Follows the backmost layer of each overlay and every page of a switcher,
+// crossing reusable widget trees, to the shades painted behind the screen's
+// controls. Every page fills its switcher, so the hidden ones are corrected
+// before they are shown. Each container on the way fills its parent; only the
+// leaf image may be pinned to a side, and only the image is scaled, never a
+// container that could also carry controls. `covered` records that an overlay
+// on the way paints something in front of the branch, which a screen that is
+// one picture -- a movie -- never does.
+fn collect_shades(
+    node: *mut UWidget,
+    align: EHorizontalAlignment,
+    covered: bool,
+    depth: u32,
+    found: &mut Vec<Shade>,
+) {
+    if depth > 32 || !live(node) || !unpositioned(node) {
+        return;
+    }
+    unsafe {
+        if (*node).IsA(UImage::StaticClass()) {
+            let image = node.cast::<UImage>();
+            if covered
+                && align != EHorizontalAlignment::HAlign_Center
+                && shade(&*image)
+                && !is_mod_backdrop(node)
+            {
+                found.push((image, align));
+            }
+            return;
+        }
+        if align != EHorizontalAlignment::HAlign_Fill {
+            return;
+        }
+        if (*node).IsA(UUserWidget::StaticClass()) {
+            let tree = (*node.cast::<UUserWidget>()).WidgetTree;
+            if live(tree) {
+                collect_shades((*tree).RootWidget, align, covered, depth + 1, found);
+            }
+            return;
+        }
+        let switcher = (*node).IsA(UWidgetSwitcher::StaticClass());
+        if !switcher && !(*node).IsA(UOverlay::StaticClass()) {
+            return;
+        }
+        let slots = (*node.cast::<UPanelWidget>()).Slots.as_slice();
+        let branches = if switcher {
+            slots
+        } else {
+            &slots[..slots.len().min(1)]
+        };
+        let covered = covered || (!switcher && slots.len() >= 2);
+        for &slot in branches {
+            if let Some(align) = full_height_alignment(slot) {
+                collect_shades((*slot).Content, align, covered, depth + 1, found);
+            }
+        }
+    }
+}
+
+// The tree root of the top-level screen `widget` belongs to, or null. A
+// reusable component's rebuild or show also reaches its owning screen. This is
+// event-driven and does not cache widgets across collection.
+fn menu_screen_root(widget: *mut UWidget) -> *mut UWidget {
     unsafe {
         if !(*widget).IsA(UUserWidget::StaticClass()) && !(*widget).IsA(UImage::StaticClass()) {
             return null_mut();
         }
     }
-    // A reusable component's rebuild/show also reaches its owning screen.
-    // This is event-driven and does not cache widgets across collection.
     let mut node = widget;
     for _ in 0..32 {
         if !live(node) {
@@ -412,24 +473,10 @@ fn embedded_menu_backdrop(widget: *mut UWidget) -> *mut UWidget {
         unsafe {
             if (*node).IsA(UUserWidget::StaticClass()) && top_level_screen(node.cast()) {
                 let tree = (*node.cast::<UUserWidget>()).WidgetTree;
-                let root = if live(tree) {
+                return if live(tree) {
                     (*tree).RootWidget
                 } else {
                     null_mut()
-                };
-                // Require a screen containing a background and foreground content.
-                // A movie whose entire root is an image is not a menu background.
-                if !live(root)
-                    || !(*root).IsA(UOverlay::StaticClass())
-                    || (*root.cast::<UPanelWidget>()).Slots.Num() < 2
-                {
-                    return null_mut();
-                }
-                let background = background_image(root);
-                return if is_mod_backdrop(background) {
-                    null_mut()
-                } else {
-                    background
                 };
             }
         }
@@ -438,20 +485,62 @@ fn embedded_menu_backdrop(widget: *mut UWidget) -> *mut UWidget {
     null_mut()
 }
 
-/// Scales a menu's dimming image across the whole viewport, from both shared
-/// hooks that reach one: a menu shown again reuses its dimming widget, by then
-/// arranged, while a rebuilt one arrives before Slate has arranged anything.
+/// Carries a full-height shade pinned to one side of the screen's box out to
+/// that side of the viewport, its inner edge held where it is: the battle
+/// result's reward page darkens its left with a 750-wide gradient, which would
+/// otherwise end in a hard edge where the box begins.
+fn extend_to_side(image: *mut UImage, align: EHorizontalAlignment, key: &str, label: &str) {
+    // The shade is pinned within its parent, which has the screen's box since
+    // every container above it fills its own.
+    let parent = outward(image.cast());
+    if parent.is_null() {
+        return;
+    }
+    let layout = layout_box(parent);
+    if !arranged(&layout.size) || !arranged(&layout.screen) {
+        return;
+    }
+    // A pinned image is as wide as its brush.
+    let width = f64::from(unsafe { &*image }.Brush.ImageSize.X);
+    let scale = Scale {
+        x: side_bleed_scale(
+            width,
+            layout.size.X,
+            layout.size.Y,
+            layout.screen.X,
+            layout.screen.Y,
+        ),
+        y: 1.0,
+    };
+    let inner = if align == EHorizontalAlignment::HAlign_Left {
+        1.0
+    } else {
+        0.0
+    };
+    if apply_scale(image.cast(), FVector2D::new(inner, 0.5), scale) {
+        log_report(
+            key,
+            format!("{label}: width={width}, {}", describe(&layout, scale)),
+        );
+    }
+}
+
+/// Paints a menu's shades out to the viewport's edges, from both shared hooks
+/// that reach one: a menu shown again reuses its shade, by then arranged,
+/// while a rebuilt one arrives before Slate has arranged anything.
 ///
-/// A menu dims the scene behind it with a full-bleed image in a WBP_BGDimming
-/// child widget, one per menu layout, all of them under the HUD root: logs
-/// record it inside WBP_SystemMenuLayout_C, WBP_OptionLayout_C,
-/// WBP_DialogLayout_C, WBP_LoadLayout_C and WBP_TutorialLayout_C. The root's
-/// inset leaves the letterbox columns undimmed, so the dimming widget is
-/// render-scaled about its center -- a 16:9 root on a 32:9 screen by 2,1.
-/// Layout, hit testing and every sibling stay exactly as authored.
+/// A menu shades the scene behind it with an image under its controls, most
+/// often a full-bleed WBP_BGDimming: logs record it inside
+/// WBP_SystemMenuLayout_C, WBP_OptionLayout_C, WBP_DialogLayout_C,
+/// WBP_LoadLayout_C and WBP_TutorialLayout_C, and in the battle result's growth
+/// pages behind a page switcher. The root's inset leaves the letterbox columns
+/// unshaded, so a full-bleed shade is render-scaled about its center -- a 16:9
+/// root on a 32:9 screen by 2,1 -- and one pinned to a side is stretched out to
+/// that side. Layout, hit testing and every sibling stay exactly as authored.
 ///
-/// Backgrounds are recognized by their full-fill position behind the screen
-/// controls, including across reusable widget trees, without widget-name rules.
+/// Shades are recognized by their position behind the screen's controls,
+/// including across reusable widget trees and switcher pages, without
+/// widget-name rules.
 ///
 /// # Safety
 ///
@@ -459,25 +548,36 @@ fn embedded_menu_backdrop(widget: *mut UWidget) -> *mut UWidget {
 /// on the game thread.
 pub(super) unsafe fn expand_menu_backdrop(widget: *mut UWidget) {
     // The blueprint's own WBP_BGDimming template arrives here as well as each
-    // instance, and expand_backdrop writes a render scale: scaling the template
-    // would hand that scale to every menu spawned later.
+    // instance, and a render scale written to the template would be handed to
+    // every menu spawned later.
     if !live(widget) {
         return;
     }
-    let widget = embedded_menu_backdrop(widget);
-    if widget.is_null() {
+    let root = menu_screen_root(widget);
+    if root.is_null() {
         return;
     }
-    // On rebuild the widget has no geometry yet, and the walk inside
-    // expand_backdrop reaches the root: the dimming image fills the root's box
-    // once arranged, and the root's player context resolves the viewport the
-    // widget itself cannot yet report.
-    let name = unsafe { (*widget).GetFullName() };
-    expand_backdrop(
-        widget,
-        &format!("menu_backdrop:{name}"),
-        &format!("Menu backdrop: {name}"),
+    let mut shades = Vec::new();
+    collect_shades(
+        root,
+        EHorizontalAlignment::HAlign_Fill,
+        false,
+        0,
+        &mut shades,
     );
+    // On rebuild a shade has no geometry yet, and the measuring walks reach the
+    // root: the shade's box is the root's once arranged, and the root's player
+    // context resolves the viewport the shade itself cannot yet report.
+    for (image, align) in shades {
+        let name = unsafe { (*image).GetFullName() };
+        let key = format!("menu_backdrop:{name}");
+        let label = format!("Menu backdrop: {name}");
+        if align == EHorizontalAlignment::HAlign_Fill {
+            expand_backdrop(image.cast(), &key, &label);
+        } else {
+            extend_to_side(image, align, &key, &label);
+        }
+    }
 }
 
 /// The image the battle layout draws its corner shadow with, or null if this

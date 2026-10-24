@@ -49,6 +49,32 @@ pub fn fit_16_9(width: f64, height: f64) -> Scale {
     }
 }
 
+/// The horizontal render scale that carries a full-height widget pinned to one
+/// side of a centered box out to the same side of the viewport, its other edge
+/// held in place.
+///
+/// As in [`full_bleed_scale`], the box must span the viewport's height, which
+/// is what makes the columns either side of it letterbox. `width` is the
+/// widget's own; all sizes are in local units.
+///
+/// Returns the scale, or 1 for unusable geometry.
+pub fn side_bleed_scale(
+    width: f64,
+    box_width: f64,
+    box_height: f64,
+    screen_width: f64,
+    screen_height: f64,
+) -> f64 {
+    if [width, box_width, box_height, screen_width, screen_height]
+        .iter()
+        .any(|value| !value.is_finite() || *value <= 0.0)
+        || (box_height - screen_height).abs() > 1.0
+    {
+        return 1.0;
+    }
+    (width + ((screen_width - box_width) / 2.0).max(0.0)) / width
+}
+
 /// The render scale that paints a widget across the whole viewport.
 ///
 /// An axis is only stretched when the box already spans the viewport on the

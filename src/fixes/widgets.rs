@@ -206,17 +206,18 @@ pub fn describe(layout: &LayoutBox, scale: Scale) -> String {
     )
 }
 
-/// Writes a render scale about a widget's center.
+/// Writes a render scale about `pivot`, a point in the widget's own box from
+/// 0,0 at its top left to 1,1 at its bottom right.
 ///
-/// The pivot is only written when it is not already centered, since both fields
-/// are pushed through native setters that rebuild the widget's render transform.
+/// The pivot is only written when it differs, since both fields are pushed
+/// through native setters that rebuild the widget's render transform.
 ///
 /// Returns whether the scale itself changed.
-pub fn apply_center_scale(widget: *mut UWidget, scale: Scale) -> bool {
+pub fn apply_scale(widget: *mut UWidget, pivot: FVector2D, scale: Scale) -> bool {
     unsafe {
-        let pivot = (*widget).RenderTransformPivot;
-        if !approximately(pivot.X, 0.5) || !approximately(pivot.Y, 0.5) {
-            (*widget).SetRenderTransformPivot(&FVector2D::new(0.5, 0.5));
+        let current_pivot = (*widget).RenderTransformPivot;
+        if !approximately(current_pivot.X, pivot.X) || !approximately(current_pivot.Y, pivot.Y) {
+            (*widget).SetRenderTransformPivot(&pivot);
         }
         let current = (*widget).RenderTransform.Scale;
         if approximately(current.X, scale.x) && approximately(current.Y, scale.y) {
@@ -249,7 +250,7 @@ pub fn expand_backdrop(widget: *mut UWidget, key: &str, label: &str) {
     );
     // Nothing was applied, so there is nothing to report: skipping here keeps a
     // steady-state frame from formatting a line the de-duplication discards.
-    if apply_center_scale(widget, scale) {
+    if apply_scale(widget, FVector2D::new(0.5, 0.5), scale) {
         log_report(key, format!("{label}: {}", describe(&layout, scale)));
     }
 }
