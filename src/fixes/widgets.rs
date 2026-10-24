@@ -47,6 +47,13 @@ thread_local! {
 /// A blueprint's template widget reaches the hooked callbacks alongside its
 /// instances, and a value written onto a template is inherited by every
 /// instance spawned from it afterwards.
+///
+/// It vouches only for a pointer the engine handed in during the current call,
+/// or one reached from such a pointer in the same call. It reads the object's
+/// own fields, so a freed object whose memory still holds its old values
+/// passes. Anything kept across calls is kept as an object index and name and
+/// resolved through GObjects each time (see [`BackdropWrapper`]), because the
+/// engine clears an object's slot when it frees the object.
 pub fn live<T>(object: *const T) -> bool {
     let object = object.cast::<UObject>();
     if object.is_null() {
