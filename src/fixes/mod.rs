@@ -20,11 +20,17 @@ mod movies;
 mod post_processing;
 mod widgets;
 
-use sdk::UMG::{ESlateVisibility, UWidget};
+use std::ffi::c_void;
+
+use sdk::{
+    CoreUObject::UObject,
+    UMG::{ESlateVisibility, UWidget},
+    rt::FName,
+};
 
 use crate::{
     config::Config,
-    utils::{ModuleInfo, SignatureHook, inject_hook},
+    utils::{ModuleInfo, SignatureHook, inject_hook, pattern_scan},
 };
 
 /// Applies every fix the config enables.
@@ -35,6 +41,11 @@ pub fn install(module: &ModuleInfo, config: &Config) {
         background::apply(module);
     }
     post_processing::install(module, config.post_processing);
+    // Everything below reads game objects or names through the SDK.
+    if !resolve_sdk(module) {
+        log::error!("SDK: lookups not found, HUD, movie and encounter fixes stay off");
+        return;
+    }
     if config.hud.enable {
         // Re-framing the capture and holding the transition's layout to its
         // shape are halves of one correction, so both follow the HUD flag: a
@@ -47,6 +58,45 @@ pub fn install(module: &ModuleInfo, config: &Config) {
     if config.movies.enable {
         movies::install(module);
     }
+}
+
+/// Points the SDK at the object array and `FName::AppendString` found by
+/// signature, so object lookups, class checks and names work wherever the
+/// linker places them. Left alone, the SDK reads both at the dump's fixed RVAs.
+/// Returns false when either signature is missing.
+fn resolve_sdk(module: &ModuleInfo) -> bool {
+    // FName::AppendString(FString&): its prologue, then CMP byte ptr [rip+X],0;
+    // MOV RSI,RDX (the output string); MOV EBX,[RCX] (the name's comparison
+    // index); MOV RDI,RCX. One match image-wide.
+    const APPEND_STRING: &str = "48 89 5C 24 ?? 48 89 74 24 ?? 57 48 83 EC ?? 80 3D ?? ?? ?? ?? 00 48 8B F2 8B 19 48 8B F9 74 ??";
+    // A chunk lookup into GUObjectArray: MOV RAX,[rip+Objects]; MOV
+    // RCX,[RAX+RCX*8]; LEA RAX,[RCX+RDX*8]. The idiom recurs about 300 times
+    // and every copy loads the same chunk table, so the first match decodes it.
+    const OBJECT_CHUNKS: &str = "48 8B 05 ?? ?? ?? ?? 48 8B 0C C8 48 8D 04 D1";
+    let Some(append_string) = pattern_scan(module.address, APPEND_STRING) else {
+        log::error!("SDK: FName::AppendString signature not found");
+        return false;
+    };
+    let Some(load) = pattern_scan(module.address, OBJECT_CHUNKS) else {
+        log::error!("SDK: GObjects signature not found");
+        return false;
+    };
+    let displacement = unsafe { ((load + 3) as *const i32).read_unaligned() };
+    // The SDK addresses the array by its start; the chunk table sits at
+    // GOBJECTS_OBJECTS within it.
+    let objects =
+        (load + 7).wrapping_add_signed(displacement as isize) - sdk::config::GOBJECTS_OBJECTS;
+    FName::InitManually(append_string as *mut c_void);
+    UObject::GObjects.InitManually(objects as *mut c_void);
+    let base = module.address.0 as usize;
+    log::info!(
+        "SDK: AppendString +{:X} (dump +{:X}), GObjects +{:X} (dump +{:X})",
+        append_string - base,
+        sdk::config::APPEND_STRING,
+        objects - base,
+        sdk::config::GOBJECTS
+    );
+    true
 }
 
 /// Installs the native widget callbacks both fixes correct through, each
