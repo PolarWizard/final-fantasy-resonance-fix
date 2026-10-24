@@ -41,7 +41,11 @@ pub fn install(module: &ModuleInfo, config: &Config) {
         background::apply(module);
     }
     post_processing::install(module, config.post_processing);
-    // Everything below reads game objects or names through the SDK.
+    // Everything below reads game objects or names through the SDK, and
+    // belongs to the HUD or movie fixes.
+    if !config.hud.enable && !config.movies.enable {
+        return;
+    }
     if !resolve_sdk(module) {
         log::error!("SDK: not usable, HUD, movie and encounter fixes stay off");
         return;
