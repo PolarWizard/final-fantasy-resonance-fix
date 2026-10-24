@@ -29,7 +29,7 @@ pub struct Fonts {
 
 /// `[hud]` -- the centered UI root, and with it the tooltip positions and the
 /// menu dimming that follow that root.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Hud {
     pub enable: bool,
@@ -90,9 +90,8 @@ impl Hud {
     }
 }
 
-// Defaults match the values the shipped TOML carries, so the config falling
-// back -- missing file, unreadable directory, one mistyped key -- applies the
-// same fixes the shipped file asks for rather than a quieter subset.
+// Defaults only fill keys the file leaves out, such as a section added after
+// it was written, and match the values the shipped TOML carries.
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -102,14 +101,6 @@ impl Default for Config {
             background: Background::default(),
             post_processing: PostProcessing::default(),
             fonts: Fonts::default(),
-        }
-    }
-}
-impl Default for Hud {
-    fn default() -> Self {
-        Self {
-            enable: true,
-            constrain: 0,
         }
     }
 }
@@ -125,14 +116,16 @@ impl Default for Background {
 }
 
 /// Reads `final_fantasy_resonance_fix.toml` from the same directory as
-/// `this_module`, then logs whichever config ends up in effect, regardless of
-/// which path below produced it. That includes the disabled-mod case:
-/// otherwise, disabling the mod would be the one path that never shows what
-/// the file actually contained.
-pub fn load(this_module: HMODULE) -> Config {
-    let config = load_inner(this_module);
+/// `this_module`, then logs the config in effect. That includes the
+/// disabled-mod case: otherwise, disabling the mod would be the one path that
+/// never shows what the file actually contained.
+///
+/// Returns `None` when the file is missing, unreadable or malformed, and the
+/// mod then applies nothing rather than fixes the user may have turned off.
+pub fn load(this_module: HMODULE) -> Option<Config> {
+    let config = load_inner(this_module)?;
     log::info!("config: {config:?}");
-    config
+    Some(config)
 }
 
 /// `this_module` must be *this DLL's own* handle (`DllMain`'s first
@@ -140,21 +133,18 @@ pub fn load(this_module: HMODULE) -> Config {
 /// process's current working directory -- for a launched game, that's its
 /// install root, not the `scripts` folder this DLL and its config actually
 /// live in.
-///
-/// Falls back to defaults on any error -- a missing or malformed config should
-/// degrade gracefully, not stop every fix in the mod from applying.
-fn load_inner(this_module: HMODULE) -> Config {
+fn load_inner(this_module: HMODULE) -> Option<Config> {
     let Some(dir) = module_dir(this_module) else {
-        log::warn!("config: could not resolve this DLL's own directory, using defaults");
-        return Config::default();
+        log::error!("config: could not resolve this DLL's own directory, mod not applied");
+        return None;
     };
     let path = dir.join("final_fantasy_resonance_fix.toml");
 
     let text = match fs::read_to_string(&path) {
         Ok(text) => text,
         Err(e) => {
-            log::info!("config: {} not found ({e}), using defaults", path.display());
-            return Config::default();
+            log::error!("config: {} not read ({e}), mod not applied", path.display());
+            return None;
         }
     };
 
@@ -164,14 +154,14 @@ fn load_inner(this_module: HMODULE) -> Config {
                 config.fonts.file = find_font(&dir);
             }
             log::info!("config: loaded {}", path.display());
-            config
+            Some(config)
         }
         Err(e) => {
-            log::warn!(
-                "config: {} failed to parse ({e}), using defaults",
+            log::error!(
+                "config: {} failed to parse ({e}), mod not applied",
                 path.display()
             );
-            Config::default()
+            None
         }
     }
 }

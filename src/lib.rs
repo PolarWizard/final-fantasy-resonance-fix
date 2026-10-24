@@ -60,7 +60,9 @@ fn main(this_module: HMODULE) {
 
         log_open(&module, this_module);
 
-        let config = config::load(this_module);
+        let Some(config) = config::load(this_module) else {
+            return;
+        };
         if !config.super_enable {
             log::info!("main: super_enable is false in the config, mod not applied");
             return;
