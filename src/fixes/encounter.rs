@@ -17,13 +17,17 @@ use super::widgets::{approximately, arranged, live, viewport_local_size};
 use crate::utils::{ModuleInfo, SignatureHook, inject_hook, log_report};
 
 thread_local! {
-    // The target the back buffer capture was last handed, a context that
-    // resolves the world for the draws below, and whether a capture is waiting
-    // to be re-framed. Identities are re-checked before use rather than
-    // trusted across frames.
+    // The target the back buffer capture was last handed and the subsystem
+    // that resolves the world for the draws below. Both are read only while
+    // PENDING, that is by the re-frame of that same capture: live() cannot
+    // tell a freed object from a live one, so a pointer kept past its capture
+    // is never touched again.
     static CAPTURE_TARGET: Cell<*mut UTextureRenderTarget2D> = const { Cell::new(null_mut()) };
     static CAPTURE_CONTEXT: Cell<*mut UObject> = const { Cell::new(null_mut()) };
     static PENDING: Cell<bool> = const { Cell::new(false) };
+    // Width over height of the last capture's target, kept as a value so the
+    // encounter layout can be shaped by it after the target itself is gone.
+    static CAPTURE_ASPECT: Cell<f64> = const { Cell::new(16.0 / 9.0) };
 }
 
 /// Remembers the render target `CPP_BackBufferCaptureSubsystem::Capture` is
@@ -58,6 +62,9 @@ fn note_capture_target(subsystem: *mut UObject, target: *mut UTextureRenderTarge
     PENDING.set(true);
     let viewport = viewport_local_size(subsystem);
     let target = unsafe { &*target };
+    if target.SizeY > 0 {
+        CAPTURE_ASPECT.set(f64::from(target.SizeX) / f64::from(target.SizeY));
+    }
     log_report(
         "capture_target",
         format!(
@@ -75,15 +82,10 @@ fn note_capture_target(subsystem: *mut UObject, target: *mut UTextureRenderTarge
 ///
 /// The capture's own target decides it: the copy scales whatever it is given
 /// into that target, so the target's proportions are the proportions of the
-/// picture the transition presents. 16:9 until a capture is seen.
+/// picture the transition presents. Recorded when the capture is handed its
+/// target; 16:9 until a capture is seen.
 pub(super) fn captured_aspect() -> f64 {
-    let target = CAPTURE_TARGET.get();
-    if live(target) && unsafe { (*target).SizeY } > 0 {
-        let target = unsafe { &*target };
-        f64::from(target.SizeX) / f64::from(target.SizeY)
-    } else {
-        16.0 / 9.0
-    }
+    CAPTURE_ASPECT.get()
 }
 
 /// Draws a region of `source` across the whole of `destination`.
