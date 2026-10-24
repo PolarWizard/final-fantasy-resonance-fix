@@ -191,9 +191,11 @@ fn bounce_target(
 pub(super) unsafe fn reframe_capture(widget: *mut UWidget) {
     static CAPTURE_NAME: NameCache = NameCache::new("Image_44");
     let (target, context) = (CAPTURE_TARGET.get(), CAPTURE_CONTEXT.get());
+    // One attempt per capture: whatever happens below, the next Image_44 (the
+    // menus' dimming image shares the name) waits for the next capture.
     if !live(widget)
         || unsafe { &*widget }.Name != CAPTURE_NAME.get()
-        || !PENDING.get()
+        || !PENDING.replace(false)
         || !live(target)
         || !live(context)
     {
@@ -223,7 +225,6 @@ pub(super) unsafe fn reframe_capture(widget: *mut UWidget) {
     {
         return;
     }
-    PENDING.set(false);
     draw_region(
         context,
         target,
